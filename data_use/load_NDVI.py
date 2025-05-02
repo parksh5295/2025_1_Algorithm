@@ -93,30 +93,42 @@ def get_ndvi(latitude, longitude, date):
         scale = 250
         ndvi_data = mean_ndvi.sample(point, scale).first()
 
-        # Check if data was found and extract the NDVI value (More robust check)
-        if ndvi_data is not None: # 1. Check if ndvi_data object itself is valid
-            ndvi_property = ndvi_data.get('NDVI') # 2. Try to get the 'NDVI' property
-            if ndvi_property is not None: # 3. Check if the property exists
-                # 4. Only call getInfo() if property exists
-                raw_ndvi = ndvi_property.getInfo()
-                if raw_ndvi is not None: # 5. Check if getInfo() returned a value
-                    ndvi_value = raw_ndvi * 0.0001
+        # --- Revised Error Handling Block START ---
+        try:
+            # Check if data was found and extract the NDVI value (More robust check)
+            if ndvi_data is not None: # 1. Check if ndvi_data object itself is Python None
+                ndvi_property = ndvi_data.get('NDVI') # 2. Try to get the 'NDVI' property (Might raise error here)
+                if ndvi_property is not None: # 3. Check if the property exists (and is not GEE null)
+                    # 4. Only call getInfo() if property exists
+                    raw_ndvi = ndvi_property.getInfo() # (Might raise error here too)
+                    if raw_ndvi is not None: # 5. Check if getInfo() returned a non-null value
+                        ndvi_value = raw_ndvi * 0.0001
+                    else:
+                        # This case might occur if the property exists but its value is explicitly null server-side
+                        print(f"[WARN] NDVI getInfo() returned null for {latitude},{longitude} between {start_date} and {end_date}")
                 else:
-                    # This case might occur if the property exists but its value is explicitly null
-                    print(f"[WARN] NDVI property exists but its value is null for {latitude},{longitude} between {start_date} and {end_date}")
+                    # Property 'NDVI' not found or was null in the sampled feature
+                    print(f"[WARN] 'NDVI' property is null or missing in sampled data for {latitude},{longitude} between {start_date} and {end_date}")
             else:
-                # Property 'NDVI' not found in the sampled feature
-                print(f"[WARN] 'NDVI' property not found in sampled data for {latitude},{longitude} between {start_date} and {end_date}")
-        else:
-             # This handles the case where .sample().first() returned null
-             print(f"[WARN] No NDVI data feature found (sample returned null) for {latitude},{longitude} between {start_date} and {end_date}")
+                 # This handles the case where .sample().first() returned Python None
+                 print(f"[WARN] Sampled data (ndvi_data) is None for {latitude},{longitude} between {start_date} and {end_date}")
 
+        except ee.ee_exception.EEException as gee_err:
+             # Catch potential GEE errors during .get() or .getInfo() specifically
+             print(f"[ERROR] GEE Exception during NDVI property access/retrieval for {latitude},{longitude}: {gee_err}")
+             # Check if it's the specific "Parameter 'object' is required" error
+             if "Parameter 'object' is required" in str(gee_err):
+                 print(f"[INFO] This likely means the sampled data object (ndvi_data) was invalid/null internally in GEE.")
+             # Ensure ndvi_value remains None in case of error
+             ndvi_value = None
+        except Exception as e:
+             # Catch any other unexpected errors during this block
+             print(f"[ERROR] Unexpected error during NDVI property access for {latitude},{longitude}: {e}")
+             ndvi_value = None
+        # --- Revised Error Handling Block END ---
 
-    # More specific error handling for GEE
-    except ee.ee_exception.EEException as e:
-        print(f"[ERROR] Earth Engine error fetching NDVI for {latitude},{longitude}: {e}")
-        # Common errors: Computation timed out., User memory limit exceeded., etc.
     except Exception as e:
-        print(f"[ERROR] Unexpected error fetching NDVI for {latitude},{longitude}: {e}")
+        print(f"[ERROR] Unexpected error setup or outside property access for NDVI {latitude},{longitude}: {e}")
+        ndvi_value = None # Ensure None on other errors too
 
     return ndvi_value
