@@ -93,14 +93,23 @@ def get_ndvi(latitude, longitude, date):
         scale = 250
         ndvi_data = mean_ndvi.sample(point, scale).first()
 
-        # Check if data was found and extract the NDVI value
-        if ndvi_data and ndvi_data.get('NDVI') is not None:
-             # Apply the scaling factor (0.0001) for MODIS NDVI
-             # https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD13Q1
-             raw_ndvi = ndvi_data.get('NDVI').getInfo()
-             ndvi_value = raw_ndvi * 0.0001
+        # Check if data was found and extract the NDVI value (More robust check)
+        if ndvi_data is not None: # 1. Check if ndvi_data object itself is valid
+            ndvi_property = ndvi_data.get('NDVI') # 2. Try to get the 'NDVI' property
+            if ndvi_property is not None: # 3. Check if the property exists
+                # 4. Only call getInfo() if property exists
+                raw_ndvi = ndvi_property.getInfo()
+                if raw_ndvi is not None: # 5. Check if getInfo() returned a value
+                    ndvi_value = raw_ndvi * 0.0001
+                else:
+                    # This case might occur if the property exists but its value is explicitly null
+                    print(f"[WARN] NDVI property exists but its value is null for {latitude},{longitude} between {start_date} and {end_date}")
+            else:
+                # Property 'NDVI' not found in the sampled feature
+                print(f"[WARN] 'NDVI' property not found in sampled data for {latitude},{longitude} between {start_date} and {end_date}")
         else:
-             print(f"[WARN] No NDVI data found for {latitude},{longitude} between {start_date} and {end_date}")
+             # This handles the case where .sample().first() returned null
+             print(f"[WARN] No NDVI data feature found (sample returned null) for {latitude},{longitude} between {start_date} and {end_date}")
 
 
     # More specific error handling for GEE
