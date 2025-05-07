@@ -20,10 +20,9 @@ def _process_single_date(args):
     date, daily_df, filenumber, sequence_id = args
     print(f"Processing date: {date} (Sequence {sequence_id})...")
     try:
-        # Assuming these imports are safe within the worker process/thread now
-        # (Can remove internal imports if top-level ones work reliably)
-        # from graph.build_graph import cluster_and_build_graph
-        # from graph.snapshot import draw_graph_snapshot
+        # Re-add imports here to ensure they are available in the thread's scope
+        from graph.build_graph import cluster_and_build_graph
+        from graph.snapshot import draw_graph_snapshot
 
         # 1. Build graph
         _processed_df, _nodes_df, G = cluster_and_build_graph(daily_df.copy())
