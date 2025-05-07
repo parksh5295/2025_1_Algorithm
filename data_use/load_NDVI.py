@@ -9,7 +9,7 @@ import sys # For potential exit on error
 # Service account information
 SERVICE_ACCOUNT = 'earth-engine-accessor@sustained-drake-458413-e1.iam.gserviceaccount.com'
 # Key file name (3 levels up from script location)
-KEY_FILENAME = 'serivce_account_key.json'
+KEY_FILENAME = 'service_account_key.json'
 
 # GEE initialization status flag
 gee_initialized = False
@@ -60,6 +60,7 @@ if not gee_initialized:
 def get_ndvi(latitude, longitude, date):
     # If GEE was not initialized successfully, NDVI calculation is not possible
     if not gee_initialized:
+        # This is a critical setup issue, print immediately
         print(f"[WARN] Skipping NDVI fetch for {latitude},{longitude} due to GEE initialization failure.")
         return None
 
@@ -68,6 +69,7 @@ def get_ndvi(latitude, longitude, date):
         try:
             date = pd.to_datetime(date)
         except ValueError:
+            # Invalid input, print immediately
             print(f"[WARN] Invalid date format for NDVI data: {date}. Skipping.")
             return None
 
@@ -85,9 +87,7 @@ def get_ndvi(latitude, longitude, date):
     log_messages = [] # Temporary log storage
 
     try:
-        # Use the correct, updated dataset ID and apply scaling factor
-        # Filter for the period *before* and *including* the event date
-        print(f"[DEBUG] GEE NDVI Date Range: {start_date_str} to {end_date_inclusive_dt.strftime('%Y-%m-%d')} (exclusive end: {end_date_exclusive_str})")
+        log_messages.append(f"[DEBUG] GEE NDVI Date Range for {latitude},{longitude}: {start_date_str} to {end_date_inclusive_dt.strftime('%Y-%m-%d')} (exclusive end: {end_date_exclusive_str})")
         collection = ee.ImageCollection('MODIS/061/MOD13Q1') \
                        .filterDate(start_date_str, end_date_exclusive_str) \
                        .select('NDVI')
@@ -109,33 +109,31 @@ def get_ndvi(latitude, longitude, date):
         primary_ndvi_value = None
         try:
             if ndvi_data_at_point is not None:
-                # Check if data was found and extract the NDVI value (More robust check)
-                ndvi_property = ndvi_data_at_point.get('NDVI') # 2. Try to get the 'NDVI' property
-                if ndvi_property is not None: # 3. Check if the property exists (and is not GEE null)
-                    # 4. Only call getInfo() if property exists
-                    raw_ndvi = ndvi_property.getInfo() # (Might raise error here too)
-                    if raw_ndvi is not None: # 5. Check if getInfo() returned a non-null value
+                ndvi_property = ndvi_data_at_point.get('NDVI') 
+                if ndvi_property is not None: 
+                    raw_ndvi = ndvi_property.getInfo() 
+                    if raw_ndvi is not None: 
                         primary_ndvi_value = raw_ndvi * 0.0001
-                        print(f"[INFO] NDVI found at exact point: {primary_ndvi_value}")
+                        log_messages.append(f"[INFO] NDVI found at exact point for {latitude},{longitude}: {primary_ndvi_value}")
                     else:
-                        print(f"[WARN] NDVI getInfo() returned null for exact point {latitude},{longitude}")
+                        log_messages.append(f"[DEBUG] NDVI getInfo() returned null for exact point {latitude},{longitude}")
                 else:
-                    print(f"[WARN] 'NDVI' property is null or missing in sampled data for exact point {latitude},{longitude}")
+                    log_messages.append(f"[DEBUG] 'NDVI' property is null or missing in sampled data for exact point {latitude},{longitude}")
             else:
-                 print(f"[WARN] Sampled data (ndvi_data_at_point) is None for exact point {latitude},{longitude}")
+                 log_messages.append(f"[DEBUG] Sampled data (ndvi_data_at_point) is None for exact point {latitude},{longitude}")
 
         except ee.ee_exception.EEException as gee_err:
             log_messages.append(f"[DEBUG] GEE Exception (1st attempt) for {latitude},{longitude}: {gee_err}")
             if "Parameter 'object' is required" in str(gee_err):
-                print(f"[INFO] This likely means the sampled data object (ndvi_data_at_point) was invalid/null internally in GEE for exact point.")
+                 log_messages.append(f"[DEBUG] This likely means the sampled data object (ndvi_data_at_point) was invalid/null internally in GEE for exact point.")
         except Exception as e:
             log_messages.append(f"[DEBUG] Unexpected error (1st attempt) for {latitude},{longitude}: {e}")
 
         if primary_ndvi_value is not None:
             ndvi_value = primary_ndvi_value
         else:
-            # Second attempt: Search for NDVI in the nearby region
-            log_messages.append(f"[INFO] NDVI not at exact point. Trying nearby region for {latitude},{longitude}...")
+            # Second attempt
+            log_messages.append(f"[INFO] NDVI not at exact point for {latitude},{longitude}. Trying nearby region...")
             try:
                 buffer_radius_meters = 1000 # Buffer radius (e.g., 1km)
                 buffered_point_geometry = point.buffer(buffer_radius_meters)
@@ -145,7 +143,7 @@ def get_ndvi(latitude, longitude, date):
                 ndvi_data_buffered_obj = mean_ndvi.reduceRegion(
                     reducer=ee.Reducer.mean(), # Use the average value
                     geometry=buffered_point_geometry,
-                    scale=scale, # Use the same resolution
+                    scale=scale, 
                     crs='EPSG:4326', 
                     maxPixels=1e9 
                 ).get('NDVI') # The result is a GEE object (ee.Number, etc.)
@@ -156,34 +154,31 @@ def get_ndvi(latitude, longitude, date):
                     raw_ndvi_buffered = ndvi_data_buffered_obj.getInfo() 
                     if raw_ndvi_buffered is not None:
                         ndvi_value = raw_ndvi_buffered * 0.0001
-                        print(f"[INFO] NDVI found in nearby region (buffer {buffer_radius_meters}m): {ndvi_value}")
+                        log_messages.append(f"[INFO] NDVI found in nearby region (buffer {buffer_radius_meters}m) for {latitude},{longitude}: {ndvi_value}")
                     else:
-                        # The result of .getInfo() is Python None
-                        print(f"[WARN] NDVI getInfo() returned null for buffered region at {latitude},{longitude}")
-                        # ndvi_value is already initialized to None
+                        log_messages.append(f"[WARN] NDVI getInfo() returned null for buffered region at {latitude},{longitude} (2nd attempt)")
                 else:
-                    # The result of .get('NDVI') is GEE null or the property is missing
-                    print(f"[WARN] 'NDVI' property is null or missing in buffered region data for {latitude},{longitude}")
-                    # ndvi_value is already initialized to None
+                    log_messages.append(f"[WARN] 'NDVI' property is null or missing in buffered region data for {latitude},{longitude} (2nd attempt)")
                 
             except ee.ee_exception.EEException as gee_err_buffer:
-                log_messages.append(f"[ERROR] GEE Exception (2nd attempt) for {latitude},{longitude}: {gee_err_buffer}")
-                # ndvi_value is already initialized to None
+                # For 2nd attempt GEE errors, we might want a higher log level if this is critical before final failure
+                log_messages.append(f"[WARN] GEE Exception (2nd attempt) for {latitude},{longitude}: {gee_err_buffer}")
             except Exception as e_buffer:
-                log_messages.append(f"[ERROR] Unexpected error (2nd attempt) for {latitude},{longitude}: {e_buffer}")
-                # ndvi_value is already initialized to None
-            # --- 2nd attempt (nearby region) logic end ---
+                log_messages.append(f"[WARN] Unexpected error (2nd attempt) for {latitude},{longitude}: {e_buffer}")
 
     except Exception as e_outer:
-        # This try block is for catching errors in GEE collection filtering, point creation, etc.
+        # This is a critical setup error for this specific call, print immediately
         print(f"[ERROR] Outer GEE setup error for NDVI {latitude},{longitude}: {e_outer}")
-        # ndvi_value is already initialized to None
+        # Print any logs gathered so far for context before returning
+        for msg in log_messages:
+            print(msg)
+        return None
 
-    # Print all log messages
+    # Print all gathered log messages
     for msg in log_messages:
         print(msg)
 
-    # Error handling based on final result
+    # Final error message if all attempts failed
     if ndvi_value is None:
         print(f"[ERROR] Failed to get NDVI for {latitude},{longitude} after all attempts.")
 
