@@ -71,14 +71,23 @@ def get_ndvi(latitude, longitude, date):
             print(f"[WARN] Invalid date format for NDVI data: {date}. Skipping.")
             return None
 
-    start_date = (date - pd.Timedelta(days=15)).strftime('%Y-%m-%d')
-    end_date = (date + pd.Timedelta(days=15)).strftime('%Y-%m-%d')
+    # Define a date window ending *on* the event date (inclusive)
+    window_days = 30 # Look back 30 days from the event date
+    start_date_dt = date - pd.Timedelta(days=window_days)
+    end_date_inclusive_dt = date # Target date
+
+    # Format dates for GEE filterDate(start, end) where 'end' is exclusive
+    start_date_str = start_date_dt.strftime('%Y-%m-%d')
+    # To include the end_date_inclusive_dt, the filter's end date must be the next day
+    end_date_exclusive_str = (end_date_inclusive_dt + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
 
     ndvi_value = None
     try:
         # Use the correct, updated dataset ID and apply scaling factor
+        # Filter for the period *before* and *including* the event date
+        print(f"[DEBUG] GEE NDVI Date Range: {start_date_str} to {end_date_inclusive_dt.strftime('%Y-%m-%d')} (exclusive end: {end_date_exclusive_str})") # 디버깅 메시지 추가
         collection = ee.ImageCollection('MODIS/061/MOD13Q1') \
-                       .filterDate(start_date, end_date) \
+                       .filterDate(start_date_str, end_date_exclusive_str) \
                        .select('NDVI')
 
         # Define the point of interest with CRS
@@ -105,13 +114,13 @@ def get_ndvi(latitude, longitude, date):
                         ndvi_value = raw_ndvi * 0.0001
                     else:
                         # This case might occur if the property exists but its value is explicitly null server-side
-                        print(f"[WARN] NDVI getInfo() returned null for {latitude},{longitude} between {start_date} and {end_date}")
+                        print(f"[WARN] NDVI getInfo() returned null for {latitude},{longitude} between {start_date_str} and {end_date_exclusive_str}")
                 else:
                     # Property 'NDVI' not found or was null in the sampled feature
-                    print(f"[WARN] 'NDVI' property is null or missing in sampled data for {latitude},{longitude} between {start_date} and {end_date}")
+                    print(f"[WARN] 'NDVI' property is null or missing in sampled data for {latitude},{longitude} between {start_date_str} and {end_date_exclusive_str}")
             else:
                  # This handles the case where .sample().first() returned Python None
-                 print(f"[WARN] Sampled data (ndvi_data) is None for {latitude},{longitude} between {start_date} and {end_date}")
+                 print(f"[WARN] Sampled data (ndvi_data) is None for {latitude},{longitude} between {start_date_str} and {end_date_exclusive_str}")
 
         except ee.ee_exception.EEException as gee_err:
              # Catch potential GEE errors during .get() or .getInfo() specifically
