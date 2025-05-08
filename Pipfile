@@ -13,6 +13,7 @@ earthengine-api = "*"
 google-api-python-client = "*"
 requests = "*"
 scikit-learn = "*"
+geopy = "*"
 
 [dev-packages]
 
