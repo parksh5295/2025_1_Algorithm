@@ -89,6 +89,10 @@ def graph_module(df, filenumber, max_workers=None): # max_workers is currently u
     tasks = []
     for i, (date, daily_df) in enumerate(daily_groups):
         sequence_id = i + 1
+        # --- Add temporary print for debugging --- START
+        if i == 0: # Print columns only for the first group to avoid excessive logging
+            print(f"[DEBUG] Columns in daily_df for date {date}: {daily_df.columns.tolist()}")
+        # --- Add temporary print for debugging --- END
         tasks.append((date, daily_df, filenumber, sequence_id))
     
     successful_snapshots = 0
