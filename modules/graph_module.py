@@ -17,14 +17,25 @@ except ImportError as e:
 # --- Worker function for parallel processing (Uncommented) --- START ---
 def _process_single_date(args):
     """Helper function to process graph building and snapshot saving for a single date."""
-    date, daily_df, filenumber, sequence_id = args
-    print(f"Processing date: {date} (Sequence {sequence_id})...")
+    date_arg, daily_df, filenumber, sequence_id = args # daily_df is the DataFrame in question
+
+    # === DEBUGGING: Print daily_df info === START
+    print(f"[WORKER_DEBUG] Processing for date_arg: {date_arg}, sequence: {sequence_id}")
+    print(f"[WORKER_DEBUG] daily_df columns: {daily_df.columns.tolist()}")
+    if not daily_df.empty:
+        print(f"[WORKER_DEBUG] daily_df head:\n{daily_df.head()}")
+    else:
+        print(f"[WORKER_DEBUG] daily_df is empty.")
+    # === DEBUGGING: Print daily_df info === END
+
+    print(f"Processing date: {date_arg} (Sequence {sequence_id})...") # General logs
     try:
         # Re-add imports here to ensure they are available in the thread's scope
         from graph.build_graph import cluster_and_build_graph
         from graph.snapshot import draw_graph_snapshot
 
         # 1. Build graph
+        # Ensure cluster_and_build_graph handles potential missing columns gracefully or we ensure they exist
         _processed_df, _nodes_df, G = cluster_and_build_graph(daily_df.copy())
 
         # 2. Save snapshot
@@ -32,7 +43,9 @@ def _process_single_date(args):
         print(f"   Snapshot saved for sequence {sequence_id}")
         return True # Success flag
     except Exception as e:
-        print(f"[ERROR] Failed processing date {date}, sequence {sequence_id}: {e}")
+        print(f"[ERROR] Failed processing date {date_arg}, sequence {sequence_id}: {e}")
+        import traceback # For detailed error output
+        print(traceback.format_exc()) # Print stack trace
         return False # Failure flag
 # --- Worker function for parallel processing (Uncommented) --- END ---
 
