@@ -24,7 +24,11 @@ def draw_graph_snapshot(G, filenumber, sequence_id):
     filename = os.path.join(target_dir, snapshot_filename)
 
     plt.figure(figsize=(10, 8))
-    pos = {n: (G.nodes[n]['lon'], G.nodes[n]['lat']) for n in G.nodes()}
+    # Use the correct attribute names for node positions
+    # Ensure these attributes exist in G.nodes[n]
+    pos = {n: (G.nodes[n].get('center_longitude', 0), 
+                 G.nodes[n].get('center_latitude', 0)) 
+           for n in G.nodes()}
     
     nx.draw(G, pos, with_labels=True, node_color='red', edge_color='gray', node_size=300, font_size=8)
     plt.title(f"Dataset {filenumber} - Snapshot #{sequence_id}")
