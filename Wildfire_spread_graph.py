@@ -56,9 +56,13 @@ def main():
     df = df[df['confidence'].isin(['h', 'n'])]
     df = estimate_fire_spread_times(df)
     
+    # Calculate the overall latitude/longitude bounds
+    lat_min, lat_max = df['latitude'].min(), df['latitude'].max()
+    lon_min, lon_max = df['longitude'].min(), df['longitude'].max()
+    latlon_bounds = (lat_min, lat_max, lon_min, lon_max)
 
     # 2. Forming a graph
-    graph_module(df, data_number)
+    graph_module(df, data_number, latlon_bounds=latlon_bounds)
     
 
 

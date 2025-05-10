@@ -51,9 +51,9 @@ def _process_single_date(args):
 
 # Main module functions (currently sequential processing)
 # Add max_workers parameter back for potential future parallel use
-def graph_module(df, filenumber, max_workers=None): # max_workers is currently unused
+def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
     """
-    Process the given DataFrame, generate snapshots for each date in parallel, 
+    Process the given DataFrame, generate snapshots for each 30-minute interval in parallel, 
     and then create a GIF.
     """
     print(f"\n--- Starting Parallel Graph Processing for dataset filenumber: {filenumber} ---")
@@ -69,59 +69,40 @@ def graph_module(df, filenumber, max_workers=None): # max_workers is currently u
         print(f"[ERROR] Failed converting 'date' column: {e}")
         return
 
-    daily_groups = list(df.groupby(df['date'].dt.date))
-    total_days = len(daily_groups)
-    print(f"Found {total_days} unique dates to process.")
+    # Group by 30-minute intervals
+    df['date_30min'] = df['date'].dt.floor('30T')
+    interval_groups = list(df.groupby('date_30min'))
+    total_intervals = len(interval_groups)
+    print(f"Found {total_intervals} unique 30-min intervals to process.")
 
-    if total_days == 0:
+    if total_intervals == 0:
         print("No data to process.")
         return
 
-    # --- Sequential Processing Loop (Commented out) --- START ---
-    # successful_snapshots = 0
-    # print(f"\nStarting sequential snapshot generation...")
-    # snapshot_start_time = time.time()
-    # 
-    # for i, (date, daily_df) in enumerate(daily_groups):
-    #     sequence_id = i + 1
-    #     print(f"Processing date: {date} (Sequence {sequence_id}/{total_days})...")
-    #     try:
-    #         _processed_df, _nodes_df, G = cluster_and_build_graph(daily_df.copy())
-    #         draw_graph_snapshot(G, filenumber, sequence_id)
-    #         print(f"   Snapshot saved for sequence {sequence_id}")
-    #         successful_snapshots += 1
-    #     except Exception as e:
-    #         print(f"[ERROR] Failed processing date {date}, sequence {sequence_id}: {e}")
-    # 
-    # snapshot_end_time = time.time()
-    # print(f"Finished snapshot generation in {snapshot_end_time - snapshot_start_time:.2f} seconds.")
-    # print(f"Successfully generated {successful_snapshots} out of {total_days} snapshots.")
-    # --- Sequential Processing Loop (Commented out) --- END ---
-
-    # --- Parallel Processing Block (Uncommented) --- START ---
+    # Prepare cumulative DataFrame
+    cumulative_df = pd.DataFrame(columns=df.columns)
     tasks = []
-    for i, (date, daily_df) in enumerate(daily_groups):
+    for i, (interval, interval_df) in enumerate(interval_groups):
         sequence_id = i + 1
-        # --- Add temporary print for debugging --- START
-        if i == 0: # Print columns only for the first group to avoid excessive logging
-            print(f"[DEBUG] Columns in daily_df for date {date}: {daily_df.columns.tolist()}")
-        # --- Add temporary print for debugging --- END
-        tasks.append((date, daily_df, filenumber, sequence_id))
-    
+        cumulative_df = pd.concat([cumulative_df, interval_df], ignore_index=True)
+        # Use accumulated data to create snapshots
+        tasks.append((interval, cumulative_df.copy(), filenumber, sequence_id, latlon_bounds))
+
     successful_snapshots = 0
-    # Use ThreadPoolExecutor
-    print(f"\nStarting parallel snapshot generation (using up to {max_workers or 'default'} threads)..." )
+    print(f"\nStarting sequential snapshot generation for 30-min intervals...")
     snapshot_start_time = time.time()
-    
-    results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(_process_single_date, tasks))
-    
-    successful_snapshots = sum(results)
+    for t in tasks:
+        interval, cumu_df, filenumber, sequence_id, latlon_bounds = t
+        try:
+            _processed_df, _nodes_df, G = cluster_and_build_graph(cumu_df.copy())
+            draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=latlon_bounds)
+            print(f"   Snapshot saved for sequence {sequence_id}")
+            successful_snapshots += 1
+        except Exception as e:
+            print(f"[ERROR] Failed processing interval {interval}, sequence {sequence_id}: {e}")
     snapshot_end_time = time.time()
     print(f"Finished snapshot generation in {snapshot_end_time - snapshot_start_time:.2f} seconds.")
-    print(f"Successfully generated {successful_snapshots} out of {total_days} snapshots.")
-    # --- Parallel Processing Block (Uncommented) --- END ---
+    print(f"Successfully generated {successful_snapshots} out of {total_intervals} snapshots.")
 
     # GIF generation (after all snapshots are saved)
     if successful_snapshots > 0:
