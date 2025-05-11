@@ -2,6 +2,7 @@ import pandas as pd
 # Remove ThreadPoolExecutor imports
 # from concurrent.futures import ThreadPoolExecutor
 # import os 
+import time # Import time module
 
 from data_use.load_weather import get_weather_data_batch
 from data_use.load_elevation import get_elevation
@@ -63,6 +64,7 @@ def add_environmental_features(df):
             continue
         print(f"Fetching batch weather data for date: {date_str}, locations: {len(data['latitudes'])}")
         batch_results = get_weather_data_batch(data['latitudes'], data['longitudes'], date_str)
+        time.sleep(1) # Add 1-second delay after each batch API call for a date
         
         for res_item in batch_results:
             if res_item and not res_item.get('error') and res_item.get('full_hourly_data'):
