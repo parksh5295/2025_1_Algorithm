@@ -43,11 +43,19 @@ def load_data_path(data_number):
     The path is dynamically calculated based on the location of the data_path.py file.
     """
     if data_number == 1:
-        # Use exact folder and file name
         file_path = DATA_DIR / 'DL_FIRE_SV-C2_608350(250314-05)' / 'fire_nrt_SV-C2_608350.csv'
     elif data_number == 2:
-        # Use exact folder and file name
         file_path = DATA_DIR / 'DL_FIRE_SV-C2_608316(230402-12)' / 'fire_archive_SV-C2_608316.csv'
+    elif data_number == 3:
+        file_path = DATA_DIR / 'DL_FIRE_J2V-C2_37482(2025-California)' / 'fire_nrt_J2V-C2_37482.csv'
+    elif data_number == 4:
+        file_path = DATA_DIR / 'DL_FIRE_SV-C2_37483(2019-Australia)' / 'fire_archive_SV-C2_37483.csv'
+    elif data_number == 5:
+        file_path = DATA_DIR / 'DL_FIRE_SV-C2_608318(220528-03)' / 'fire_archive_SV-C2_608318.csv'
+    elif data_number == 6:
+        file_path = DATA_DIR / 'DL_FIRE_SV-C2_608319(220405-12)' / 'fire_archive_SV-C2_608319.csv'
+    elif data_number == 7:
+        file_path = DATA_DIR / 'DL_FIRE_SV-C2_608320(220304-14)' / 'fire_archive_SV-C2_608320.csv'
     else:
         raise ValueError("Invalid data number")
 
