@@ -7,15 +7,18 @@ from PIL import Image
 
 
 def draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=None):
-    # Get the current script directory (graph folder)
+    # Get the current script directory (e.g., /home/work/code/graph)
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Go up two levels to reach the root directory (code's parent)
-    root_dir = os.path.dirname(os.path.dirname(script_dir))
-    # Create path to data directory
-    data_dir = os.path.join(root_dir, 'data')
+    # Go up two levels to reach the project root (e.g., /home/work)
+    project_root = os.path.dirname(os.path.dirname(script_dir))
     
-    # Create frame directory structure
-    frame_dir = os.path.join(data_dir, 'frame')
+    # Construct the base data directory (e.g., /home/work/data)
+    base_data_dir = os.path.join(project_root, 'data')
+    
+    # Construct the target directory for frames 
+    # (e.g., /home/work/data/graph/frame/frame_XXXX)
+    data_graph_dir = os.path.join(base_data_dir, 'graph')
+    frame_dir = os.path.join(data_graph_dir, 'frame')
     frame_folder_name = f"frame_{str(filenumber).zfill(4)}"
     target_dir = os.path.join(frame_dir, frame_folder_name)
 

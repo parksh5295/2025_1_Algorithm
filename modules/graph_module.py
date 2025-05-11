@@ -109,11 +109,17 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
         print(f"\nGenerating GIF for dataset {filenumber}...")
         gif_start_time = time.time()
         try:
-            # Call generate_gif_for_dataset function
-            current_script_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(current_script_dir)
-            graph_folder_path = os.path.join(project_root, 'graph')
-            generate_gif_for_dataset(filenumber=filenumber, frame_base_dir=graph_folder_path)
+            # Determine project root and the target base directory for frames/GIFs
+            current_script_dir = os.path.dirname(os.path.abspath(__file__)) # .../code/modules
+            code_dir = os.path.dirname(current_script_dir) # .../code
+            project_root = os.path.dirname(code_dir) # .../
+            
+            # frame_base_dir should now point to project_root/data/graph
+            # This is where gen_gif.py will look for a 'frame' subfolder 
+            # and create a 'gif' subfolder.
+            gif_frames_base_dir = os.path.join(project_root, 'data', 'graph')
+
+            generate_gif_for_dataset(filenumber=filenumber, frame_base_dir=gif_frames_base_dir)
             gif_end_time = time.time()
             print(f"GIF generation complete in {gif_end_time - gif_start_time:.2f} seconds.")
         except Exception as e:
