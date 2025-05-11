@@ -17,7 +17,7 @@ def generate_gif_for_dataset(
     """
     # 1. configure the frame folder path corresponding to a specific filenumber
     filenumber_padded = str(filenumber).zfill(4)
-    target_frame_folder = os.path.join(frame_base_dir, f"frame_{filenumber_padded}")
+    target_frame_folder = os.path.join(frame_base_dir, 'frame', f"frame_{filenumber_padded}")
 
     # 2. verify the existence of the destination folder
     if not os.path.isdir(target_frame_folder):
