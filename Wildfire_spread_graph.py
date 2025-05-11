@@ -1,5 +1,6 @@
 import sys
 import os
+import pandas as pd
 
 print("--- Runtime Environment Check ---")
 print(f"Python Executable: {sys.executable}")
@@ -41,15 +42,48 @@ def main():
 
     # 1. Collecting data
     csv_path = load_data_path(data_number)
-    df = load_and_enrich_data(
-        csv_path=csv_path,
-        date_col='acq_date',
-        time_col='acq_time',
-        lat_col='latitude',
-        lon_col='longitude'
-    )
+    
+    # Generate path for the cached file
+    base, ext = os.path.splitext(csv_path)
+    cached_csv_path = f"{base}_with_env{ext}"
 
-    if df is None:
+    if os.path.exists(cached_csv_path):
+        print(f"[INFO] Loading data from cached file: {cached_csv_path}")
+        # Important: Ensure date/time columns are parsed correctly if stored as strings
+        # And other dtypes are preserved. This might need adjustment based on how
+        # load_and_enrich_data structures the final DataFrame.
+        # For now, a simple read, assuming columns are correctly typed or will be handled.
+        df = pd.read_csv(cached_csv_path)
+        # Potentially re-parse date columns if they are not stored in a directly usable format
+        # Example: df['date'] = pd.to_datetime(df['date'])
+        # This needs to match the output of load_and_enrich_data
+        # For now, we assume load_and_enrich_data saves them in a way that pd.read_csv handles well
+        # or that subsequent processing (like estimate_fire_spread_times) handles type conversion.
+        # A common practice is to ensure 'date' or similar columns are converted after loading.
+        # Let's assume 'date' is the primary datetime column after enrichment.
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+        if 'start_time' in df.columns: # If clustering renames it
+             df['start_time'] = pd.to_datetime(df['start_time'])
+
+    else:
+        print(f"[INFO] Cached file not found. Processing original data: {csv_path}")
+        df = load_and_enrich_data(
+            csv_path=csv_path,
+            date_col='acq_date',
+            time_col='acq_time',
+            lat_col='latitude',
+            lon_col='longitude'
+        )
+
+        if df is not None:
+            print(f"[INFO] Saving enriched data to cache: {cached_csv_path}")
+            df.to_csv(cached_csv_path, index=False)
+        else:
+            print("[ERROR] Data loading and enrichment failed. Exiting.")
+            exit()
+
+    if df is None: # Should be redundant if the above logic is correct, but as a safeguard
         print("[ERROR] Data loading and enrichment failed. Exiting.")
         exit()
 
