@@ -92,11 +92,14 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
     print(f"\nStarting sequential snapshot generation for 10-min intervals...")
     snapshot_start_time = time.time()
     
-    # Store nodes from the previous snapshot to identify new nodes and existing nodes
-    # previous_nodes_set = set() # Initialize an empty set for the very first snapshot. Deferred for now.
-    # Declare a cumulative edge/node set
-    cumulative_edges = set()
-    cumulative_nodes = set()
+    # Initializing a Stacked Graph Object (Outside of a Loop)
+    import networkx as nx
+    G_cumu = nx.DiGraph()
+    # # Store nodes from the previous snapshot to identify new nodes and existing nodes
+    # # previous_nodes_set = set() # Initialize an empty set for the very first snapshot. Deferred for now.
+    # # Declare a cumulative edge/node set -> Remove
+    # cumulative_edges = set()
+    # cumulative_nodes = set()
 
     for t_idx, t in enumerate(tasks): # Enumerate to access task index
         interval, cumu_df, filenumber, sequence_id, latlon_bounds = t
@@ -145,7 +148,8 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
                                     closest_neighbor_id = neighbor_node_id
                             
                             if closest_neighbor_id is not None:
-                                G.add_edge(isolated_node_id, closest_neighbor_id, type='inferred_connection', weight=0.1) # Add a type and a small weight
+                                # Connect isolated nodes first in the current snapshot's G
+                                G.add_edge(isolated_node_id, closest_neighbor_id, type='inferred_connection', weight=0.1) 
                                 print(f"[INFO] Added inferred edge between isolated {isolated_node_id} and {closest_neighbor_id} (dist_sq: {min_dist_sq:.4f}) for sequence {sequence_id}")
                             else:
                                 print(f"[INFO] No non-isolated neighbor found to connect isolated node {isolated_node_id} in sequence {sequence_id}")
@@ -159,22 +163,20 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
                         # print(f"[INFO] nodes_df is empty for sequence {sequence_id}. Skipping node connection logic.")
             # --- END: New logic to connect isolated nodes ---
 
-            # === Cumulative edges/nodes reflection ===
-            # Reflect the current G's edges and nodes into the cumulative sets
-            cumulative_edges.update(G.edges(data=True))
-            cumulative_nodes.update(G.nodes(data=True))
+            # === Update the cumulative graph ===
+            # Add/update the edges and nodes of the current G to the cumulative graph G_cumu
+            G_cumu.add_nodes_from(G.nodes(data=True))
+            G_cumu.add_edges_from(G.edges(data=True))
 
-            # Create a new graph from cumulative edges and nodes
-            import networkx as nx
-            G_cumu = nx.DiGraph()
-            G_cumu.add_nodes_from(cumulative_nodes)
-            G_cumu.add_edges_from(cumulative_edges)
-
+            # Create a snapshot from the cumulative graph G_cumu
             draw_graph_snapshot(G_cumu, filenumber, sequence_id, latlon_bounds=latlon_bounds)
             print(f"   Snapshot saved for sequence {sequence_id}")
             successful_snapshots += 1
         except Exception as e:
             print(f"[ERROR] Failed processing interval {interval}, sequence {sequence_id}: {e}")
+            # Print detailed error information when an error occurs
+            import traceback
+            print(traceback.format_exc())
     snapshot_end_time = time.time()
     print(f"Finished snapshot generation in {snapshot_end_time - snapshot_start_time:.2f} seconds.")
     print(f"Successfully generated {successful_snapshots} out of {total_intervals} snapshots.")
