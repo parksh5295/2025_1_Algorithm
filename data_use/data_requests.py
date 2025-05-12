@@ -81,7 +81,7 @@ def add_environmental_features(df):
             print(f"  Fetching sub-batch for date: {date_str}, locations {i+1} to {min(i+MAX_LOCATIONS_PER_BATCH, num_total_locations_for_date)} of {num_total_locations_for_date}")
             
             current_batch_results = get_weather_data_batch(batch_lats, batch_lons, date_str)
-            time.sleep(1) # Delay after each sub-batch API call
+            time.sleep(3) # Increased delay from 1 to 3 seconds after each sub-batch API call
 
             for res_item in current_batch_results:
                 if res_item and not res_item.get('error') and res_item.get('full_hourly_data'):

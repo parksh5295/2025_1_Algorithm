@@ -52,7 +52,7 @@ def get_weather_data_batch(latitudes, longitudes, target_date_str_yyyy_mm_dd):
     }
 
     max_retries = 5
-    base_delay_seconds = 1
+    base_delay_seconds = 5
     results_list = [None] * len(latitudes)
 
     for attempt in range(max_retries):
