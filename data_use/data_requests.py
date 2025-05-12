@@ -60,54 +60,122 @@ def add_environmental_features(df):
     print(f"Found {len(requests_by_date_str)} unique dates for weather API calls.")
 
     MAX_LOCATIONS_PER_BATCH = 30 # Limit batch size for API calls, reduced from 50
-    API_CALL_DELAY_SECONDS = 1 # Delay in seconds between each API call in the queue
+    API_CALL_DELAY_SECONDS = 2  # Increased from 1 to 2
+    DATE_CHANGE_DELAY_SECONDS = 10 # New: Delay when the date changes
+    DELAYED_RETRY_WAIT_SECONDS = 180 # 3 minutes
+    MAX_DELAYED_RETRIES = 1 # Max number of delayed retries for a single task
 
     # Create a flat list of tasks for the queue
-    task_queue = []
-    for date_str, data in requests_by_date_str.items():
-        if not data['latitudes']:
+    task_queue_initial = []
+    for date_str_loop, data_loop in requests_by_date_str.items():
+        if not data_loop['latitudes']:
             continue
         
-        all_lats_for_date = data['latitudes']
-        all_lons_for_date = data['longitudes']
-        num_total_locations_for_date = len(all_lats_for_date)
+        all_lats_for_date_loop = data_loop['latitudes']
+        all_lons_for_date_loop = data_loop['longitudes']
+        num_total_locations_for_date_loop = len(all_lats_for_date_loop)
 
-        for i in range(0, num_total_locations_for_date, MAX_LOCATIONS_PER_BATCH):
-            batch_lats = all_lats_for_date[i:i + MAX_LOCATIONS_PER_BATCH]
-            batch_lons = all_lons_for_date[i:i + MAX_LOCATIONS_PER_BATCH]
-            if batch_lats: # Ensure batch is not empty
-                task_queue.append({'date_str': date_str, 'batch_lats': batch_lats, 'batch_lons': batch_lons, 'original_total': num_total_locations_for_date, 'current_batch_start_idx': i})
+        for i_loop in range(0, num_total_locations_for_date_loop, MAX_LOCATIONS_PER_BATCH):
+            batch_lats_loop = all_lats_for_date_loop[i_loop:i_loop + MAX_LOCATIONS_PER_BATCH]
+            batch_lons_loop = all_lons_for_date_loop[i_loop:i_loop + MAX_LOCATIONS_PER_BATCH]
+            if batch_lats_loop: 
+                task_queue_initial.append({
+                    'date_str': date_str_loop, 
+                    'batch_lats': batch_lats_loop, 
+                    'batch_lons': batch_lons_loop, 
+                    'original_total': num_total_locations_for_date_loop, 
+                    'current_batch_start_idx': i_loop,
+                    'retry_count': 0 # Initialize retry count
+                })
 
-    print(f"Generated {len(task_queue)} API tasks for the queue.")
+    print(f"Generated {len(task_queue_initial)} initial API tasks.")
 
-    for task_idx, task_details in enumerate(task_queue):
-        date_str = task_details['date_str']
-        batch_lats = task_details['batch_lats']
-        batch_lons = task_details['batch_lons']
-        num_total_locations_for_date = task_details['original_total']
-        current_batch_start_idx = task_details['current_batch_start_idx']
+    # Main task processing loop with delayed retry queue
+    task_queue_live = list(task_queue_initial) # Make a mutable copy
+    delayed_retry_queue = [] # Stores (retry_at_timestamp, task_details)
+    
+    last_processed_date_str_live = None
+    processed_task_count = 0
+
+    while task_queue_live or delayed_retry_queue:
+        current_time_live = time.time()
+
+        # Check delayed_retry_queue and move tasks back to live queue if ready
+        newly_added_to_live_queue = 0
+        remaining_in_delayed_live = []
+        for retry_at_ts, delayed_task_details_item in delayed_retry_queue:
+            if current_time_live >= retry_at_ts:
+                task_queue_live.append(delayed_task_details_item)
+                newly_added_to_live_queue += 1
+            else:
+                remaining_in_delayed_live.append((retry_at_ts, delayed_task_details_item))
+        delayed_retry_queue = remaining_in_delayed_live
+        if newly_added_to_live_queue > 0:
+            print(f"[INFO] Moved {newly_added_to_live_queue} tasks from delayed_retry_queue to live_task_queue.")
+
+        if not task_queue_live:
+            if delayed_retry_queue:
+                # print(f"[INFO] Live task queue is empty. Waiting for tasks from delayed_retry_queue (next check in ~{API_CALL_DELAY_SECONDS}s)...")
+                time.sleep(API_CALL_DELAY_SECONDS) 
+            continue
+
+        # Get task from the front of the live queue
+        current_task_details = task_queue_live.pop(0)
+        processed_task_count += 1
+
+        date_str_task = current_task_details['date_str']
+        batch_lats_task = current_task_details['batch_lats']
+        batch_lons_task = current_task_details['batch_lons']
+        num_total_locations_task = current_task_details['original_total']
+        current_batch_start_idx_task = current_task_details['current_batch_start_idx']
+        task_retry_count = current_task_details['retry_count']
         
-        print(f"Processing task {task_idx + 1}/{len(task_queue)}: Date {date_str}, locations {current_batch_start_idx + 1} to {min(current_batch_start_idx + MAX_LOCATIONS_PER_BATCH, num_total_locations_for_date)} of {num_total_locations_for_date}")
+        # Apply date change delay only for tasks that are not from delayed retry (retry_count == 0)
+        # and if the date actually changed.
+        if task_retry_count == 0 and last_processed_date_str_live is not None and date_str_task != last_processed_date_str_live:
+            print(f"Date changed from {last_processed_date_str_live} to {date_str_task}. Applying extra delay of {DATE_CHANGE_DELAY_SECONDS}s...")
+            time.sleep(DATE_CHANGE_DELAY_SECONDS)
+
+        print(f"Processing task {processed_task_count} (UID: {date_str_task}_{current_batch_start_idx_task}, Retry: {task_retry_count}): Date {date_str_task}, locations {current_batch_start_idx_task + 1} to {min(current_batch_start_idx_task + MAX_LOCATIONS_PER_BATCH, num_total_locations_task)} of {num_total_locations_task}")
         
-        current_batch_results = get_weather_data_batch(batch_lats, batch_lons, date_str)
+        current_batch_results = get_weather_data_batch(batch_lats_task, batch_lons_task, date_str_task)
         
-        # Process results
+        task_had_critical_failure = False
         for res_item in current_batch_results:
+            # Process successful results or non-critical errors into all_fetched_weather_data
             if res_item and not res_item.get('error') and res_item.get('full_hourly_data'):
                 key_lat = round(float(res_item['latitude']), 5)
                 key_lon = round(float(res_item['longitude']), 5)
-                all_fetched_weather_data[(date_str, key_lat, key_lon)] = res_item['full_hourly_data']
+                all_fetched_weather_data[(date_str_task, key_lat, key_lon)] = res_item['full_hourly_data']
             elif res_item and res_item.get('error'):
                 key_lat = round(float(res_item['latitude']), 5)
                 key_lon = round(float(res_item['longitude']), 5)
-                print(f"[WARN] Error fetching weather for {date_str}, ({key_lat},{key_lon}): {res_item['error']}")
-                all_fetched_weather_data[(date_str, key_lat, key_lon)] = {'error': res_item['error']}
-        
-        print(f"Finished task {task_idx + 1}/{len(task_queue)}. Waiting for {API_CALL_DELAY_SECONDS}s...")
-        time.sleep(API_CALL_DELAY_SECONDS) # Delay after each API call
+                error_message = res_item['error']
+                print(f"[WARN] Error for {date_str_task}, ({key_lat},{key_lon}): {error_message}") # Log individual errors
+                all_fetched_weather_data[(date_str_task, key_lat, key_lon)] = {'error': error_message}
+                if "Failed to fetch weather data after 5 retries" in error_message:
+                    task_had_critical_failure = True # Mark task for potential delayed retry
 
-    # Optional: additional sleep after all sub-batches for a date are done
-    # This is now handled by the API_CALL_DELAY_SECONDS after each task.
+        if task_had_critical_failure:
+            if task_retry_count < MAX_DELAYED_RETRIES:
+                current_task_details['retry_count'] += 1
+                retry_at_timestamp = time.time() + DELAYED_RETRY_WAIT_SECONDS
+                delayed_retry_queue.append((retry_at_timestamp, current_task_details))
+                print(f"[INFO] Task (UID: {date_str_task}_{current_batch_start_idx_task}) critically failed. Moved to delayed_retry_queue (Retry {current_task_details['retry_count']}/{MAX_DELAYED_RETRIES}). Will retry around {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(retry_at_timestamp))}.")
+            else:
+                print(f"[ERROR] Task (UID: {date_str_task}_{current_batch_start_idx_task}) critically failed after {task_retry_count} delayed retries. Giving up.")
+        else:
+             print(f"[INFO] Task (UID: {date_str_task}_{current_batch_start_idx_task}) processed.")
+
+        # Update last processed date only if the task wasn't a critical failure moved to retry
+        # (to ensure date change delay applies correctly if a retried task starts a new date sequence)
+        if not task_had_critical_failure or task_retry_count >= MAX_DELAYED_RETRIES :
+            last_processed_date_str_live = date_str_task
+        
+        print(f"Finished processing current task logic. Waiting for {API_CALL_DELAY_SECONDS}s...")
+        time.sleep(API_CALL_DELAY_SECONDS)
+
+    print(f"All API tasks (initial and retries) have been processed.")
     # The old loop structure is gone.
 
     print("Mapping fetched weather data to DataFrame...")
