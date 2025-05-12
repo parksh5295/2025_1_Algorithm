@@ -3,6 +3,13 @@ import os
 import sys
 import pandas as pd
 
+# --- Module Imports ---
+from prediction_utils import calculate_bearing, calculate_spread_weight, example_destination_calculator
+from prediction_core import predict_wildfire_spread
+from evaluation import calculate_accuracy
+from neighbor_definition import example_neighbor_finder
+
+
 # --- Path Setup ---
 # Current script is Wildfire_predict.py (in project_root)
 current_script_path = os.path.abspath(__file__)
@@ -12,12 +19,6 @@ project_root = os.path.dirname(current_script_path) # project_root is the direct
 prediction_module_dir = os.path.join(project_root, 'prediction')
 if prediction_module_dir not in sys.path:
     sys.path.append(prediction_module_dir)
-
-# --- Module Imports ---
-from prediction_utils import calculate_bearing, calculate_spread_weight, example_destination_calculator
-from prediction_core import predict_wildfire_spread
-from evaluation import calculate_accuracy
-from neighbor_definition import example_neighbor_finder
 
 # --- Configuration Constants ---
 COEFFICIENTS = {

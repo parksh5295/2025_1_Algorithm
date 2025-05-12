@@ -59,23 +59,43 @@ def add_environmental_features(df):
     all_fetched_weather_data = {}
     print(f"Found {len(requests_by_date_str)} unique dates for weather API calls.")
 
+    MAX_LOCATIONS_PER_BATCH = 50 # Limit batch size for API calls
+
     for date_str, data in requests_by_date_str.items():
         if not data['latitudes']:
             continue
-        print(f"Fetching batch weather data for date: {date_str}, locations: {len(data['latitudes'])}")
-        batch_results = get_weather_data_batch(data['latitudes'], data['longitudes'], date_str)
-        time.sleep(1) # Add 1-second delay after each batch API call for a date
         
-        for res_item in batch_results:
-            if res_item and not res_item.get('error') and res_item.get('full_hourly_data'):
-                key_lat = round(float(res_item['latitude']), 5)
-                key_lon = round(float(res_item['longitude']), 5)
-                all_fetched_weather_data[(date_str, key_lat, key_lon)] = res_item['full_hourly_data']
-            elif res_item and res_item.get('error'):
-                key_lat = round(float(res_item['latitude']), 5)
-                key_lon = round(float(res_item['longitude']), 5)
-                print(f"[WARN] Error fetching weather for {date_str}, ({key_lat},{key_lon}): {res_item['error']}")
-                all_fetched_weather_data[(date_str, key_lat, key_lon)] = {'error': res_item['error']}
+        all_lats_for_date = data['latitudes']
+        all_lons_for_date = data['longitudes']
+        num_total_locations_for_date = len(all_lats_for_date)
+
+        print(f"Processing weather data for date: {date_str}, total locations: {num_total_locations_for_date}")
+
+        for i in range(0, num_total_locations_for_date, MAX_LOCATIONS_PER_BATCH):
+            batch_lats = all_lats_for_date[i:i + MAX_LOCATIONS_PER_BATCH]
+            batch_lons = all_lons_for_date[i:i + MAX_LOCATIONS_PER_BATCH]
+            
+            if not batch_lats: # Should not happen
+                continue
+
+            print(f"  Fetching sub-batch for date: {date_str}, locations {i+1} to {min(i+MAX_LOCATIONS_PER_BATCH, num_total_locations_for_date)} of {num_total_locations_for_date}")
+            
+            current_batch_results = get_weather_data_batch(batch_lats, batch_lons, date_str)
+            time.sleep(1) # Delay after each sub-batch API call
+
+            for res_item in current_batch_results:
+                if res_item and not res_item.get('error') and res_item.get('full_hourly_data'):
+                    key_lat = round(float(res_item['latitude']), 5)
+                    key_lon = round(float(res_item['longitude']), 5)
+                    all_fetched_weather_data[(date_str, key_lat, key_lon)] = res_item['full_hourly_data']
+                elif res_item and res_item.get('error'):
+                    key_lat = round(float(res_item['latitude']), 5)
+                    key_lon = round(float(res_item['longitude']), 5)
+                    print(f"[WARN] Error fetching weather for {date_str}, ({key_lat},{key_lon}): {res_item['error']}")
+                    all_fetched_weather_data[(date_str, key_lat, key_lon)] = {'error': res_item['error']}
+        
+        # Optional: additional sleep after all sub-batches for a date are done
+        # time.sleep(1) 
 
     print("Mapping fetched weather data to DataFrame...")
     processed_rows_weather = 0
@@ -111,8 +131,9 @@ def add_environmental_features(df):
                 df.loc[index, 'windspeed'] = get_val_at_hour('wind_speed_10m', hour_of_day)
                 df.loc[index, 'winddirection'] = get_val_at_hour('wind_direction_10m', hour_of_day)
             elif daily_weather_data and daily_weather_data.get('error'):
-                pass
+                pass # Error was already logged, data will remain NA
             else:
+                # This case might occur if a sub-batch failed silently or data for specific point wasn't in any successful sub-batch
                 print(f"[WARN] No pre-fetched weather data found for row {index}: {date_str}, ({lookup_lat},{lookup_lon}). Values will be NA.")
             
             processed_rows_weather +=1
@@ -136,7 +157,7 @@ def add_environmental_features(df):
         df.loc[index, 'elevation'] = get_elevation(latitude, longitude)
 
         if pd.isna(date_val):
-            df.loc[index, 'ndvi'] = None
+            df.loc[index, 'ndvi'] = None # pd.NA would be more consistent
         else:
             try:
                 current_ts_ndvi = pd.to_datetime(date_val)
