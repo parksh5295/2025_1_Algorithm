@@ -59,8 +59,11 @@ def add_environmental_features(df):
     all_fetched_weather_data = {}
     print(f"Found {len(requests_by_date_str)} unique dates for weather API calls.")
 
-    MAX_LOCATIONS_PER_BATCH = 50 # Limit batch size for API calls
+    MAX_LOCATIONS_PER_BATCH = 30 # Limit batch size for API calls, reduced from 50
+    API_CALL_DELAY_SECONDS = 1 # Delay in seconds between each API call in the queue
 
+    # Create a flat list of tasks for the queue
+    task_queue = []
     for date_str, data in requests_by_date_str.items():
         if not data['latitudes']:
             continue
@@ -69,33 +72,43 @@ def add_environmental_features(df):
         all_lons_for_date = data['longitudes']
         num_total_locations_for_date = len(all_lats_for_date)
 
-        print(f"Processing weather data for date: {date_str}, total locations: {num_total_locations_for_date}")
-
         for i in range(0, num_total_locations_for_date, MAX_LOCATIONS_PER_BATCH):
             batch_lats = all_lats_for_date[i:i + MAX_LOCATIONS_PER_BATCH]
             batch_lons = all_lons_for_date[i:i + MAX_LOCATIONS_PER_BATCH]
-            
-            if not batch_lats: # Should not happen
-                continue
+            if batch_lats: # Ensure batch is not empty
+                task_queue.append({'date_str': date_str, 'batch_lats': batch_lats, 'batch_lons': batch_lons, 'original_total': num_total_locations_for_date, 'current_batch_start_idx': i})
 
-            print(f"  Fetching sub-batch for date: {date_str}, locations {i+1} to {min(i+MAX_LOCATIONS_PER_BATCH, num_total_locations_for_date)} of {num_total_locations_for_date}")
-            
-            current_batch_results = get_weather_data_batch(batch_lats, batch_lons, date_str)
-            time.sleep(3) # Increased delay from 1 to 3 seconds after each sub-batch API call
+    print(f"Generated {len(task_queue)} API tasks for the queue.")
 
-            for res_item in current_batch_results:
-                if res_item and not res_item.get('error') and res_item.get('full_hourly_data'):
-                    key_lat = round(float(res_item['latitude']), 5)
-                    key_lon = round(float(res_item['longitude']), 5)
-                    all_fetched_weather_data[(date_str, key_lat, key_lon)] = res_item['full_hourly_data']
-                elif res_item and res_item.get('error'):
-                    key_lat = round(float(res_item['latitude']), 5)
-                    key_lon = round(float(res_item['longitude']), 5)
-                    print(f"[WARN] Error fetching weather for {date_str}, ({key_lat},{key_lon}): {res_item['error']}")
-                    all_fetched_weather_data[(date_str, key_lat, key_lon)] = {'error': res_item['error']}
+    for task_idx, task_details in enumerate(task_queue):
+        date_str = task_details['date_str']
+        batch_lats = task_details['batch_lats']
+        batch_lons = task_details['batch_lons']
+        num_total_locations_for_date = task_details['original_total']
+        current_batch_start_idx = task_details['current_batch_start_idx']
         
-        # Optional: additional sleep after all sub-batches for a date are done
-        # time.sleep(1) 
+        print(f"Processing task {task_idx + 1}/{len(task_queue)}: Date {date_str}, locations {current_batch_start_idx + 1} to {min(current_batch_start_idx + MAX_LOCATIONS_PER_BATCH, num_total_locations_for_date)} of {num_total_locations_for_date}")
+        
+        current_batch_results = get_weather_data_batch(batch_lats, batch_lons, date_str)
+        
+        # Process results
+        for res_item in current_batch_results:
+            if res_item and not res_item.get('error') and res_item.get('full_hourly_data'):
+                key_lat = round(float(res_item['latitude']), 5)
+                key_lon = round(float(res_item['longitude']), 5)
+                all_fetched_weather_data[(date_str, key_lat, key_lon)] = res_item['full_hourly_data']
+            elif res_item and res_item.get('error'):
+                key_lat = round(float(res_item['latitude']), 5)
+                key_lon = round(float(res_item['longitude']), 5)
+                print(f"[WARN] Error fetching weather for {date_str}, ({key_lat},{key_lon}): {res_item['error']}")
+                all_fetched_weather_data[(date_str, key_lat, key_lon)] = {'error': res_item['error']}
+        
+        print(f"Finished task {task_idx + 1}/{len(task_queue)}. Waiting for {API_CALL_DELAY_SECONDS}s...")
+        time.sleep(API_CALL_DELAY_SECONDS) # Delay after each API call
+
+    # Optional: additional sleep after all sub-batches for a date are done
+    # This is now handled by the API_CALL_DELAY_SECONDS after each task.
+    # The old loop structure is gone.
 
     print("Mapping fetched weather data to DataFrame...")
     processed_rows_weather = 0
