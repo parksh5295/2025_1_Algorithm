@@ -63,6 +63,7 @@ def get_weather_data_batch(latitudes, longitudes, target_date_str_yyyy_mm_dd):
             
             api_response_data = response.json()
 
+            # Handle API's own error response (which is a dict)
             if isinstance(api_response_data, dict) and api_response_data.get("error"):
                 error_reason = api_response_data.get('reason', 'API Error')
                 print(f"[ERROR] API error for batch: {error_reason}")
@@ -73,8 +74,14 @@ def get_weather_data_batch(latitudes, longitudes, target_date_str_yyyy_mm_dd):
                     }
                 return results_list
 
-            # Expecting a list of results, one for each location if API call for multiple locations is successful
+            # If only one location was requested and API returns a dict directly, wrap it in a list
+            if len(latitudes) == 1 and isinstance(api_response_data, dict):
+                print("[DEBUG] Single location request returned a dict. Wrapping it in a list.")
+                api_response_data = [api_response_data]
+
+            # Now, proceed with expecting a list
             if not isinstance(api_response_data, list):
+                # This error should now be less likely for single location calls
                 raise ValueError(f"Unexpected API response format. Expected list, got {type(api_response_data)}")
 
             if len(api_response_data) != len(latitudes):
