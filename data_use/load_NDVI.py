@@ -181,5 +181,5 @@ def get_ndvi(latitude, longitude, date):
     # Final error message if all attempts failed
     if ndvi_value is None:
         print(f"[ERROR] Failed to get NDVI for {latitude},{longitude} after all attempts.")
-
+    
     return ndvi_value

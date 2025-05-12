@@ -34,29 +34,34 @@ def draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=None):
     # Automatically download background maps (OpenStreetMap Static)
     if latlon_bounds is not None:
         lat_min, lat_max, lon_min, lon_max = latlon_bounds
-        # OpenStreetMap Static Map API (via third-party, e.g. staticmap.openstreetmap.de)
-        osm_url = (
-            f"https://staticmap.openstreetmap.de/staticmap.php?"
-            f"center={(lat_min+lat_max)/2},{(lon_min+lon_max)/2}"
-            f"&zoom=10&size=800x640&maptype=mapnik"
-            f"&markers={lat_min},{lon_min},lightblue1"
+        # Use ESRI World Imagery (satellite) tiles for background
+        # We'll fetch a static image using the static-maps.yandex.ru API as a workaround for easy satellite imagery
+        # (Google Static Maps requires API key and billing)
+        # For more robust solution, use a tile server and stitch tiles, but here we use a simple static image
+        center_lat = (lat_min + lat_max) / 2
+        center_lon = (lon_min + lon_max) / 2
+        # Yandex Static Maps API (satellite): https://static-maps.yandex.ru/1.x/?ll=lon,lat&z=zoom&l=sat&size=650,450
+        # Note: size is in pixels, max 650x450 for free
+        yandex_url = (
+            f"https://static-maps.yandex.ru/1.x/?ll={center_lon},{center_lat}"
+            f"&z=10&l=sat&size=650,450"
         )
         try:
-            response = requests.get(osm_url, timeout=10)
+            response = requests.get(yandex_url, timeout=10)
             if response.status_code == 200:
                 img = Image.open(BytesIO(response.content))
-                plt.imshow(img, extent=[lon_min, lon_max, lat_min, lat_max], alpha=0.3, zorder=0)
+                plt.imshow(img, extent=[lon_min, lon_max, lat_min, lat_max], alpha=0.7, zorder=0)
             else:
-                print(f"[WARN] Failed to download OSM background image: {response.status_code}")
+                print(f"[WARN] Failed to download satellite background image: {response.status_code}")
         except Exception as e:
-            print(f"[WARN] Exception during OSM background download: {e}")
+            print(f"[WARN] Exception during satellite background download: {e}")
 
     # Use the correct attribute names for node positions
     pos = {n: (G.nodes[n].get('center_longitude', 0), 
                  G.nodes[n].get('center_latitude', 0)) 
            for n in G.nodes()}
     
-    nx.draw(G, pos, with_labels=True, node_color='blue', edge_color='black', width=1.5, node_size=300, font_size=8)
+    nx.draw(G, pos, with_labels=True, node_color='red', edge_color='red', width=1.5, node_size=300, font_size=8)
     plt.title(f"Dataset {filenumber} - Snapshot #{sequence_id}")
 
     # Fix xlim/ylim
@@ -64,6 +69,11 @@ def draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=None):
         lat_min, lat_max, lon_min, lon_max = latlon_bounds
         plt.xlim(lon_min, lon_max)
         plt.ylim(lat_min, lat_max)
+        # Add ticks for latitude and longitude
+        lon_ticks = list(plt.MaxNLocator(nbins=8).tick_values(lon_min, lon_max))
+        lat_ticks = list(plt.MaxNLocator(nbins=8).tick_values(lat_min, lat_max))
+        plt.xticks(lon_ticks)
+        plt.yticks(lat_ticks)
 
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")

@@ -5,6 +5,10 @@ import shutil
 import concurrent.futures 
 import time
 
+# Re-add imports here to ensure they are available in the thread's scope
+from graph.build_graph import cluster_and_build_graph
+from graph.snapshot import draw_graph_snapshot
+
 
 # Imports for graph/utiles modules
 try:
@@ -30,10 +34,6 @@ def _process_single_date(args):
 
     print(f"Processing date: {date_arg} (Sequence {sequence_id})...") # General logs
     try:
-        # Re-add imports here to ensure they are available in the thread's scope
-        from graph.build_graph import cluster_and_build_graph
-        from graph.snapshot import draw_graph_snapshot
-
         # 1. Build graph
         # Ensure cluster_and_build_graph handles potential missing columns gracefully or we ensure they exist
         _processed_df, _nodes_df, G = cluster_and_build_graph(daily_df.copy())
@@ -94,6 +94,9 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
     
     # Store nodes from the previous snapshot to identify new nodes and existing nodes
     # previous_nodes_set = set() # Initialize an empty set for the very first snapshot. Deferred for now.
+    # Declare a cumulative edge/node set
+    cumulative_edges = set()
+    cumulative_nodes = set()
 
     for t_idx, t in enumerate(tasks): # Enumerate to access task index
         interval, cumu_df, filenumber, sequence_id, latlon_bounds = t
@@ -154,11 +157,20 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
                          # print(f"[WARN] nodes_df is missing required columns ('cluster_id', 'center_longitude', 'center_latitude') for sequence {sequence_id}. Skipping node connection logic.")
                     # else:
                         # print(f"[INFO] nodes_df is empty for sequence {sequence_id}. Skipping node connection logic.")
-
-
             # --- END: New logic to connect isolated nodes ---
 
-            draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=latlon_bounds)
+            # === Cumulative edges/nodes reflection ===
+            # Reflect the current G's edges and nodes into the cumulative sets
+            cumulative_edges.update(G.edges(data=True))
+            cumulative_nodes.update(G.nodes(data=True))
+
+            # Create a new graph from cumulative edges and nodes
+            import networkx as nx
+            G_cumu = nx.DiGraph()
+            G_cumu.add_nodes_from(cumulative_nodes)
+            G_cumu.add_edges_from(cumulative_edges)
+
+            draw_graph_snapshot(G_cumu, filenumber, sequence_id, latlon_bounds=latlon_bounds)
             print(f"   Snapshot saved for sequence {sequence_id}")
             successful_snapshots += 1
         except Exception as e:
