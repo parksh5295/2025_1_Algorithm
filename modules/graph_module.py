@@ -69,11 +69,11 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
         print(f"[ERROR] Failed converting 'date' column: {e}")
         return
 
-    # Group by 30-minute intervals
-    df['date_30min'] = df['date'].dt.floor('30T')
-    interval_groups = list(df.groupby('date_30min'))
+    # Group by 10-minute intervals (changed from 30T)
+    df['date_10min'] = df['date'].dt.floor('15T')
+    interval_groups = list(df.groupby('date_10min'))
     total_intervals = len(interval_groups)
-    print(f"Found {total_intervals} unique 30-min intervals to process.")
+    print(f"Found {total_intervals} unique 15-min intervals to process.")
 
     if total_intervals == 0:
         print("No data to process.")
@@ -89,12 +89,75 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
         tasks.append((interval, cumulative_df.copy(), filenumber, sequence_id, latlon_bounds))
 
     successful_snapshots = 0
-    print(f"\nStarting sequential snapshot generation for 30-min intervals...")
+    print(f"\nStarting sequential snapshot generation for 10-min intervals...")
     snapshot_start_time = time.time()
-    for t in tasks:
+    
+    # Store nodes from the previous snapshot to identify new nodes and existing nodes
+    # previous_nodes_set = set() # Initialize an empty set for the very first snapshot. Deferred for now.
+
+    for t_idx, t in enumerate(tasks): # Enumerate to access task index
         interval, cumu_df, filenumber, sequence_id, latlon_bounds = t
         try:
-            _processed_df, _nodes_df, G = cluster_and_build_graph(cumu_df.copy())
+            _processed_df, nodes_df, G = cluster_and_build_graph(cumu_df.copy()) # Get nodes_df as well
+
+            # --- START: New logic to connect isolated nodes ---
+            if G.number_of_nodes() > 1: # Only proceed if there's more than one node
+                isolated_nodes = [node for node in G.nodes() if G.degree(node) == 0]
+                
+                # Ensure nodes_df is not empty and has the required columns
+                if not nodes_df.empty and all(col in nodes_df.columns for col in ['cluster_id', 'center_longitude', 'center_latitude']):
+                    # Create a dictionary for node positions from nodes_df for distance calculation
+                    # Filter nodes_df to only include nodes present in the current graph G
+                    relevant_nodes_df = nodes_df[nodes_df['cluster_id'].isin(G.nodes())]
+                    node_positions = {
+                        row['cluster_id']: (row['center_longitude'], row['center_latitude'])
+                        for index, row in relevant_nodes_df.iterrows()
+                    }
+
+                    if isolated_nodes and len(G.nodes()) > len(isolated_nodes): # Only if there are non-isolated nodes to connect to
+                        non_isolated_nodes = [node for node in G.nodes() if G.degree(node) > 0]
+                        
+                        for isolated_node_id in isolated_nodes:
+                            if isolated_node_id not in node_positions:
+                                print(f"[WARN] Position for isolated node {isolated_node_id} not found in node_positions dict. Skipping connection for this node in sequence {sequence_id}.")
+                                continue
+
+                            iso_pos = node_positions[isolated_node_id]
+                            min_dist_sq = float('inf')
+                            closest_neighbor_id = None
+
+                            for neighbor_node_id in non_isolated_nodes:
+                                if neighbor_node_id not in node_positions or neighbor_node_id == isolated_node_id:
+                                    # This might happen if a non-isolated node in G is not in nodes_df (should not ideally occur)
+                                    # or trying to connect to self (which is already handled by G.degree(node) > 0 for non_isolated_nodes)
+                                    continue
+                                
+                                neigh_pos = node_positions[neighbor_node_id]
+                                # Simple Euclidean distance (squared, for comparison)
+                                # For geographic data, Haversine distance would be more accurate, but this is for visual linking.
+                                dist_sq = (iso_pos[0] - neigh_pos[0])**2 + (iso_pos[1] - neigh_pos[1])**2 
+                                
+                                if dist_sq < min_dist_sq:
+                                    min_dist_sq = dist_sq
+                                    closest_neighbor_id = neighbor_node_id
+                            
+                            if closest_neighbor_id is not None:
+                                G.add_edge(isolated_node_id, closest_neighbor_id, type='inferred_connection', weight=0.1) # Add a type and a small weight
+                                print(f"[INFO] Added inferred edge between isolated {isolated_node_id} and {closest_neighbor_id} (dist_sq: {min_dist_sq:.4f}) for sequence {sequence_id}")
+                            else:
+                                print(f"[INFO] No non-isolated neighbor found to connect isolated node {isolated_node_id} in sequence {sequence_id}")
+                    # else:
+                        # if isolated_nodes:
+                            # print(f"[INFO] All nodes are isolated in sequence {sequence_id}, no connections to make.")
+                # else:
+                    # if not nodes_df.empty:
+                         # print(f"[WARN] nodes_df is missing required columns ('cluster_id', 'center_longitude', 'center_latitude') for sequence {sequence_id}. Skipping node connection logic.")
+                    # else:
+                        # print(f"[INFO] nodes_df is empty for sequence {sequence_id}. Skipping node connection logic.")
+
+
+            # --- END: New logic to connect isolated nodes ---
+
             draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=latlon_bounds)
             print(f"   Snapshot saved for sequence {sequence_id}")
             successful_snapshots += 1

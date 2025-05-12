@@ -56,7 +56,7 @@ def draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=None):
                  G.nodes[n].get('center_latitude', 0)) 
            for n in G.nodes()}
     
-    nx.draw(G, pos, with_labels=True, node_color='red', edge_color='gray', node_size=300, font_size=8)
+    nx.draw(G, pos, with_labels=True, node_color='blue', edge_color='black', width=1.5, node_size=300, font_size=8)
     plt.title(f"Dataset {filenumber} - Snapshot #{sequence_id}")
 
     # Fix xlim/ylim
@@ -64,6 +64,11 @@ def draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=None):
         lat_min, lat_max, lon_min, lon_max = latlon_bounds
         plt.xlim(lon_min, lon_max)
         plt.ylim(lat_min, lat_max)
+
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.axis('on') # Ensure axes are on
+    plt.grid(True) # Add a grid for better readability
 
     plt.savefig(filename)
     plt.close()
