@@ -102,7 +102,7 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
     # cumulative_nodes = set()
 
     for t_idx, t in enumerate(tasks): # Enumerate to access task index
-        interval, cumu_df, filenumber, sequence_id, latlon_bounds = t
+        interval, cumu_df, filenumber, sequence_id, current_latlon_bounds = t # Renamed for clarity
         try:
             _processed_df, nodes_df, G = cluster_and_build_graph(cumu_df.copy()) # Get nodes_df as well
 
@@ -169,7 +169,8 @@ def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
             G_cumu.add_edges_from(G.edges(data=True))
 
             # Create a snapshot from the cumulative graph G_cumu
-            draw_graph_snapshot(G_cumu, filenumber, sequence_id, latlon_bounds=latlon_bounds)
+            # Pass current_latlon_bounds to draw_graph_snapshot
+            draw_graph_snapshot(G_cumu, filenumber, sequence_id, latlon_bounds=current_latlon_bounds)
             print(f"   Snapshot saved for sequence {sequence_id}")
             successful_snapshots += 1
         except Exception as e:

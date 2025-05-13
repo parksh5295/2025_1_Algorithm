@@ -90,9 +90,22 @@ def main():
     df = df[df['confidence'].isin(['h', 'n'])]
     df = estimate_fire_spread_times(df)
     
-    # Calculate the overall latitude/longitude bounds
-    lat_min, lat_max = df['latitude'].min(), df['latitude'].max()
-    lon_min, lon_max = df['longitude'].min(), df['longitude'].max()
+    # Calculate the overall latitude/longitude bounds with margin
+    lat_min_orig, lat_max_orig = df['latitude'].min(), df['latitude'].max()
+    lon_min_orig, lon_max_orig = df['longitude'].min(), df['longitude'].max()
+    
+    # Calculate margin (e.g., 10% of the range)
+    lat_range = lat_max_orig - lat_min_orig
+    lon_range = lon_max_orig - lon_min_orig
+    margin_lat = lat_range * 0.10 # 10% margin
+    margin_lon = lon_range * 0.10 # 10% margin
+    
+    # Apply margin
+    lat_min = lat_min_orig - margin_lat
+    lat_max = lat_max_orig + margin_lat
+    lon_min = lon_min_orig - margin_lon
+    lon_max = lon_max_orig + margin_lon
+    
     latlon_bounds = (lat_min, lat_max, lon_min, lon_max)
 
     # 2. Forming a graph
