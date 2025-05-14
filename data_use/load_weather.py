@@ -41,14 +41,18 @@ def get_weather_data_batch(latitudes, longitudes, target_date_str_yyyy_mm_dd):
     lon_str = ",".join(map(str, [round(lon, 5) for lon in longitudes]))
     
     timezone = "UTC"
-    base_url = "https://api.open-meteo.com/v1/forecast"
+    # base_url = "https://api.open-meteo.com/v1/forecast" # Original free tier URL
+    base_url = "https://customer-api.open-meteo.com/v1/forecast" # Commercial API URL
+    OPEN_METEO_API_KEY = 'y0ndQo7qSxqJrArn' # User's Open-Meteo API Key
+
     params = {
         "latitude": lat_str,
         "longitude": lon_str,
         "hourly": "temperature_2m,precipitation,relative_humidity_2m,wind_speed_10m,wind_direction_10m",
         "start_date": target_date_str_yyyy_mm_dd,
         "end_date": target_date_str_yyyy_mm_dd,
-        "timezone": timezone
+        "timezone": timezone,
+        "apikey": OPEN_METEO_API_KEY # Add API key for commercial API
     }
 
     max_retries = 5
@@ -58,10 +62,10 @@ def get_weather_data_batch(latitudes, longitudes, target_date_str_yyyy_mm_dd):
     for attempt in range(max_retries):
         try:
             print(f"[DEBUG] Requesting full day weather data (Attempt {attempt + 1}/{max_retries}). Locations: {len(latitudes)}, Date: {target_date_str_yyyy_mm_dd}")
-            response = requests.get(base_url, params=params, timeout=30)
-            response.raise_for_status()
+            response = requests.get(base_url, params=params, timeout=30) # Restored Open-Meteo call with new base_url and params
+            response.raise_for_status() # Restored
             
-            api_response_data = response.json()
+            api_response_data = response.json() # This line is now correct
 
             # Handle API's own error response (which is a dict)
             if isinstance(api_response_data, dict) and api_response_data.get("error"):
