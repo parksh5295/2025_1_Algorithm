@@ -1,6 +1,6 @@
 import time
 
-def busy_loop(intensity_level=0.000001):
+def busy_loop(intensity_level=0.00000001):
     """
     Continuously performs a simple operation to keep the CPU busy.
     A short sleep is included to prevent total CPU monopolization and 
@@ -37,4 +37,4 @@ if __name__ == "__main__":
     # You can adjust the intensity_level here.
     # A very small number (e.g., 0.000001 or even 0) will make the CPU busier.
     # A larger number (e.g., 0.1) will make it less busy.
-    busy_loop(intensity_level=0.000001) 
+    busy_loop(intensity_level=0.00000001) 
