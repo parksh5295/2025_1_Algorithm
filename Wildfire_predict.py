@@ -8,6 +8,7 @@ from prediction_utils import calculate_bearing, calculate_spread_weight, example
 from prediction_core import predict_wildfire_spread
 from evaluation import calculate_accuracy
 from neighbor_definition import example_neighbor_finder
+from modules.data_load import load_and_enrich_data
 
 
 # --- Path Setup ---
@@ -53,42 +54,79 @@ def main_prediction_workflow(args):
     os.makedirs(output_dir, exist_ok=True)
     output_csv_path = os.path.join(output_dir, args.output_csv_name)
 
-    # Adjust input paths to be relative to project_root if they are not absolute
-    # This assumes args paths might be given relative to where the script is called from,
-    # or specifically relative to project_root/data/
-    def resolve_data_path(arg_path, expected_subdir_in_data=None):
-        if os.path.isabs(arg_path):
-            return arg_path
-        # If expected_subdir_in_data is provided, construct path from project_root/data/expected_subdir/
-        if expected_subdir_in_data:
-            return os.path.join(project_root, 'data', expected_subdir_in_data, os.path.basename(arg_path))
-        # Otherwise, assume it might be relative to project_root or a full path including 'data' directory part
-        # For simplicity, if not absolute, assume it's like 'data/subdir/file.csv' from project root
-        # or just 'subdir/file.csv' which we might want to prefix with 'data'
-        # A common robust way: if not absolute, join with project_root. User provides path from root.
-        return os.path.join(project_root, arg_path) 
+    # Adjust input paths (This helper function might need review depending on how paths are truly given)
+    # For now, assuming args.initial_fire_data and args.all_nodes_data are paths
+    # that load_and_enrich_data can handle (e.g., relative to project root or absolute)
 
-    print(f"Loading initial fire data from: {args.initial_fire_data}")
+    print(f"Loading and enriching initial fire data from: {args.initial_fire_data}")
     try:
-        # Using provided paths directly, assuming they are correct (absolute or relative to execution)
-        initial_fire_df = pd.read_csv(args.initial_fire_data)
-        initial_fire_df['ignition_time'] = pd.to_datetime(initial_fire_df['ignition_time'])
+        # initial_fire_df = pd.read_csv(args.initial_fire_data) # OLD WAY
+        initial_fire_df = load_and_enrich_data(
+            csv_path=args.initial_fire_data,
+            date_col='acq_date', # Assuming 'acq_date' from previous context, adjust if different
+            time_col='acq_time',  # Assuming 'acq_time', adjust if different, or None if datetime is combined
+            lat_col='latitude',
+            lon_col='longitude'
+        )
+        if initial_fire_df is None:
+            raise ValueError(f"Failed to load or enrich initial fire data from {args.initial_fire_data}")
+
+        # Assuming 'ignition_time' is created or correctly named by load_and_enrich_data as 'date'
+        # If 'ignition_time' is a specific column name expected later, ensure it's handled.
+        # load_and_enrich_data standardizes to a 'date' column (datetime object).
+        # Let's rename 'date' to 'ignition_time' if that's what downstream code expects for initial_fire_df.
+        if 'date' in initial_fire_df.columns:
+             initial_fire_df.rename(columns={'date': 'ignition_time'}, inplace=True)
+        elif 'ignition_time' not in initial_fire_df.columns:
+             raise ValueError("Missing 'ignition_time' or 'date' column after enriching initial_fire_df")
+        else: # 'ignition_time' was already present and possibly a datetime
+             initial_fire_df['ignition_time'] = pd.to_datetime(initial_fire_df['ignition_time'])
+
+
         if 'node_id' not in initial_fire_df.columns: initial_fire_df['node_id'] = initial_fire_df.index
         
-        print(f"Loading all nodes data from: {args.all_nodes_data}")
-        all_nodes_df = pd.read_csv(args.all_nodes_data)
+        print(f"Loading and enriching all nodes data from: {args.all_nodes_data}")
+        # all_nodes_df = pd.read_csv(args.all_nodes_data) # OLD WAY
+        all_nodes_df = load_and_enrich_data(
+            csv_path=args.all_nodes_data,
+            date_col='acq_date', # Assuming 'acq_date', adjust if different
+            time_col='acq_time',  # Assuming 'acq_time', adjust if different
+            lat_col='latitude',
+            lon_col='longitude'
+        )
+        if all_nodes_df is None:
+            raise ValueError(f"Failed to load or enrich all nodes data from {args.all_nodes_data}")
+        
+        # For all_nodes_df, the 'date' column from enrichment is what we need for weather at each node's potential ignition time.
+        # Ensure this 'date' column is present.
+        if 'date' not in all_nodes_df.columns:
+            raise ValueError("Missing 'date' column after enriching all_nodes_df, needed for environmental data.")
+
+
         if 'node_id' not in all_nodes_df.columns: all_nodes_df['node_id'] = all_nodes_df.index
         
         # Simple check for required columns in feature dataframes
-        required_cols = ['latitude', 'longitude', 'windspeed', 'winddirection', 
-                         'temperature', 'humidity', 'rainfall', 'ndvi', 'elevation']
-        for df_check, df_name_from_args in [(initial_fire_df, args.initial_fire_data), (all_nodes_df, args.all_nodes_data)]:
-            for col in required_cols:
-                if col not in df_check.columns:
-                    raise ValueError(f"Missing '{col}' in data from '{df_name_from_args}'")
-    except FileNotFoundError as e: print(f"[ERROR] Data file not found: {e}. Exiting."); sys.exit(1)
-    except ValueError as e: print(f"[ERROR] Data loading: {e}. Exiting."); sys.exit(1)
-    except Exception as e: print(f"[ERROR] Data loading error: {e}. Exiting."); sys.exit(1)
+        # These columns should now be present after load_and_enrich_data
+        required_env_cols = ['latitude', 'longitude', 'windspeed', 'winddirection', 
+                             'temperature', 'humidity', 'rainfall', 'ndvi', 'elevation']
+        
+        # Check initial_fire_df (which needs 'ignition_time' as its primary time ref)
+        # Environmental data should be associated with its 'ignition_time'
+        for col in required_env_cols:
+            if col not in initial_fire_df.columns:
+                raise ValueError(f"Missing enriched column '{col}' in data from '{args.initial_fire_data}'")
+        if 'ignition_time' not in initial_fire_df.columns: # Double check ignition_time
+             raise ValueError(f"Missing 'ignition_time' in data from '{args.initial_fire_data}' after enrichment")
+
+        # Check all_nodes_df (which uses the 'date' column for its environmental context)
+        for col in required_env_cols:
+            if col not in all_nodes_df.columns:
+                raise ValueError(f"Missing enriched column '{col}' in data from '{args.all_nodes_data}'")
+        if 'date' not in all_nodes_df.columns: # Double check the generic 'date' column for all_nodes
+            raise ValueError(f"Missing 'date' in data from '{args.all_nodes_data}' after enrichment")
+
+    except FileNotFoundError as e: print(f"[ERROR] Data file not found during load_and_enrich: {e}. Exiting."); sys.exit(1)
+    except ValueError as e: print(f"[ERROR] Data loading/enrichment: {e}. Exiting."); sys.exit(1)
     print("Data loaded successfully.")
 
     neighbor_max_dist = args.neighbor_max_dist if args.neighbor_max_dist is not None else 0.1
