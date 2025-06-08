@@ -1,31 +1,28 @@
 import argparse
 import os
-import sys
 import pandas as pd
 from functools import partial
 
 # --- Module Imports ---
-from prediction_utils import calculate_bearing, calculate_spread_weight, example_destination_calculator
-from prediction_core import predict_wildfire_spread
-from evaluation import calculate_accuracy
-from neighbor_definition import example_neighbor_finder
+from prediction.prediction_utils import calculate_bearing, calculate_spread_weight, example_destination_calculator
+from prediction.prediction_core import predict_wildfire_spread
+from prediction.evaluation import calculate_accuracy
+from prediction.neighbor_definition import example_neighbor_finder
 from modules.data_load import load_and_enrich_data
 # --- Model Imports ---
 from models import WildfireSpreadNet, calculate_spread_weight_nn
-from prediction_utils import calculate_spread_weight
+from prediction.prediction_utils import calculate_spread_weight
 # --- Path Utility ---
 from data_use.data_path import get_prediction_paths
 
 
 # --- Path Setup ---
-# Current script is Wildfire_predict.py (in project_root)
-current_script_path = os.path.abspath(__file__)
-project_root = os.path.dirname(current_script_path) # project_root is the directory of this script
-
-# prediction_module_dir is now directly relative to project_root
-prediction_module_dir = os.path.join(project_root, 'prediction')
-if prediction_module_dir not in sys.path:
-    sys.path.append(prediction_module_dir)
+# This block is no longer needed as we use explicit relative imports.
+# current_script_path = os.path.abspath(__file__)
+# project_root = os.path.dirname(current_script_path) 
+# prediction_module_dir = os.path.join(project_root, 'prediction')
+# if prediction_module_dir not in sys.path:
+#     sys.path.append(prediction_module_dir)
 
 # --- Configuration Constants ---
 COEFFICIENTS = {
