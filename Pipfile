@@ -15,6 +15,7 @@ requests = "*"
 scikit-learn = "*"
 geopy = "*"
 plotly = "*"
+torch = "*"
 
 [dev-packages]
 
