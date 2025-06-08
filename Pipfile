@@ -3,8 +3,16 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+url = "https://download.pytorch.org/whl/cpu"
+verify_ssl = true
+name = "pytorch_cpu"
+
 [packages]
 pandas = "*"
+torch = {version="*", index="pytorch_cpu"}
+torchvision = {version="*", index="pytorch_cpu"}
+torchaudio = {version="*", index="pytorch_cpu"}
 networkx = "*"
 imageio = "*"
 matplotlib = "*"
@@ -15,7 +23,6 @@ requests = "*"
 scikit-learn = "*"
 geopy = "*"
 plotly = "*"
-torch = "*"
 
 [dev-packages]
 
