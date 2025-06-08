@@ -140,12 +140,35 @@ def main():
         print(f"--- Running in Prediction & Visualization Mode for data_number: {args.data_number} ---")
         try:
             paths = get_prediction_paths(args.data_number)
+            initial_path = paths['initial']
             predicted_path = paths['predicted']
             nodes_path = paths['all_nodes']
         except (ValueError, FileNotFoundError) as e:
             print(f"[ERROR] Could not retrieve paths: {e}")
             return
-            
+
+        # Automatically create the initial fire file if it doesn't exist
+        if not os.path.exists(initial_path):
+            print(f"[INFO] Initial fire file not found at {initial_path}.")
+            print(f"[INFO] Creating it automatically from the earliest fire in {nodes_path}...")
+            try:
+                all_nodes_df = pd.read_csv(nodes_path)
+                # Ensure date/time columns exist and create a datetime object for sorting
+                if 'acq_date' in all_nodes_df.columns and 'acq_time' in all_nodes_df.columns:
+                    # Convert acq_time to a zero-padded 4-digit string
+                    all_nodes_df['acq_time_str'] = all_nodes_df['acq_time'].astype(str).str.zfill(4)
+                    all_nodes_df['datetime'] = pd.to_datetime(all_nodes_df['acq_date'] + ' ' + all_nodes_df['acq_time_str'], format='%Y-%m-%d %H%M')
+                    # Find the single row with the earliest timestamp
+                    initial_fire_df = all_nodes_df.loc[[all_nodes_df['datetime'].idxmin()]]
+                    # Save this row as the initial fire file
+                    initial_fire_df.to_csv(initial_path, index=False)
+                    print(f"[SUCCESS] Created initial fire file with 1 fire point at {initial_path}.")
+                else:
+                    raise ValueError("Source data must contain 'acq_date' and 'acq_time' columns to auto-generate initial fire file.")
+            except Exception as e:
+                print(f"[ERROR] Failed to auto-generate initial fire file: {e}")
+                return
+
         # Check if prediction needs to be run
         if not os.path.exists(predicted_path) or args.force_predict:
             if args.force_predict:
