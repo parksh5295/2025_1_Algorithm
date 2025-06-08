@@ -8,7 +8,9 @@ from .prediction_utils import calculate_spread_weight, calculate_bearing # calcu
 # Assuming neighbor_finder_func is passed as an argument and defined elsewhere (e.g., neighbor_definition.py)
 
 def predict_wildfire_spread(initial_fire_nodes_df, all_nodes_df, 
-                              prediction_steps, c_coeffs, 
+                              prediction_steps,
+                              #c_coeffs,
+                              spread_weight_calculator_func, # Changed from c_coeffs
                               destination_calculator_func, 
                               neighbor_finder_func):
     """
@@ -52,8 +54,12 @@ def predict_wildfire_spread(initial_fire_nodes_df, all_nodes_df,
                 
             destination_metric = destination_calculator_func(initial_node_row, neighbor_node_row)
             # Use initial_node_row for source features as this is when it starts spreading
+            '''
             spread_duration_hours = calculate_spread_weight(initial_node_row, neighbor_node_row,
                                                           destination_metric, c_coeffs)
+            '''
+            spread_duration_hours = spread_weight_calculator_func(initial_node_row, neighbor_node_row,
+                                                                  destination_metric)
             
             potential_ignition_at = ignition_time + pd.to_timedelta(spread_duration_hours, unit='hours')
             # Store the features of the source node *at the time this potential spread was calculated*
@@ -103,8 +109,12 @@ def predict_wildfire_spread(initial_fire_nodes_df, all_nodes_df,
 
             destination_metric = destination_calculator_func(newly_ignited_node_features, neighbor_node_row)
             # Use newly_ignited_node_features for source features in this new spread calculation
+            '''
             spread_duration_hours = calculate_spread_weight(newly_ignited_node_features, neighbor_node_row,
                                                           destination_metric, c_coeffs)
+            '''
+            spread_duration_hours = spread_weight_calculator_func(newly_ignited_node_features, neighbor_node_row,
+                                                                  destination_metric)
             
             # The new potential ignition time is relative to when the current source (newly_ignited_node) ignited
             potential_ignition_at = ignite_at + pd.to_timedelta(spread_duration_hours, unit='hours')

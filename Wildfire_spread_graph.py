@@ -1,6 +1,8 @@
 import sys
 import os
 import pandas as pd
+import networkx as nx
+import plotly.graph_objects as go
 
 print("--- Runtime Environment Check ---")
 print(f"Python Executable: {sys.executable}")
@@ -19,27 +21,124 @@ from utiles.estimate_time import estimate_fire_spread_times
 from modules.graph_module import graph_module
 
 
+def draw_prediction_graph(prediction_path, nodes_path, output_filename="prediction_graph.html"):
+    """
+    Visualizes the output of the wildfire prediction model.
+
+    Args:
+        prediction_path (str): Path to the prediction result CSV (e.g., predicted_spread.csv).
+        nodes_path (str): Path to the CSV containing all node information (lat, lon, etc.).
+        output_filename (str): Name for the output HTML file.
+    """
+    print("--- Visualizing Prediction Result ---")
+    
+    # 1. Load data
+    try:
+        predictions_df = pd.read_csv(prediction_path)
+        nodes_df = pd.read_csv(nodes_path)
+        print("Prediction and node data loaded successfully.")
+    except FileNotFoundError as e:
+        print(f"[ERROR] Could not find a required data file: {e}")
+        return
+
+    # 2. Merge data to get coordinates for each predicted node
+    # We need coordinates for both the target node and the source node
+    
+    # Merge for the target node
+    merged_df = pd.merge(
+        predictions_df, 
+        nodes_df[['node_id', 'latitude', 'longitude']], 
+        on='node_id', 
+        how='left'
+    )
+    
+    # Merge for the source node
+    merged_df = pd.merge(
+        merged_df,
+        nodes_df[['node_id', 'latitude', 'longitude']].rename(columns={
+            'node_id': 'source_node_id',
+            'latitude': 'source_latitude',
+            'longitude': 'source_longitude'
+        }),
+        on='source_node_id',
+        how='left'
+    )
+    
+    merged_df = merged_df.sort_values(by='ignition_time').reset_index(drop=True)
+    print("Data merged and sorted.")
+
+    # 3. Create Plotly graph
+    fig = go.Figure()
+
+    # Add edges (spread paths)
+    for _, row in merged_df.iterrows():
+        if pd.notna(row['source_node_id']):
+            fig.add_trace(
+                go.Scattermapbox(
+                    mode="lines",
+                    lon=[row['source_longitude'], row['longitude']],
+                    lat=[row['source_latitude'], row['latitude']],
+                    line=dict(width=2, color="red"),
+                    name=f"Spread to {int(row['node_id'])}"
+                )
+            )
+
+    # Add nodes (ignition points)
+    fig.add_trace(
+        go.Scattermapbox(
+            mode="markers",
+            lon=merged_df['longitude'],
+            lat=merged_df['latitude'],
+            marker=dict(
+                size=10,
+                color=merged_df['prediction_step_count'],
+                colorscale="YlOrRd",
+                colorbar_title="Prediction Step"
+            ),
+            text=[f"Node: {int(nid)}<br>Step: {int(step)}" for nid, step in zip(merged_df['node_id'], merged_df['prediction_step_count'])],
+            hoverinfo="text",
+            name="Ignition Points"
+        )
+    )
+
+    # 4. Update layout to use a map background
+    fig.update_layout(
+        title="Wildfire Spread Prediction",
+        mapbox_style="open-street-map",
+        mapbox_center_lon=merged_df['longitude'].mean(),
+        mapbox_center_lat=merged_df['latitude'].mean(),
+        mapbox_zoom=10,
+        margin={"r":0,"t":40,"l":0,"b":0},
+        showlegend=False
+    )
+    
+    # 5. Save and show graph
+    fig.write_html(output_filename)
+    print(f"Graph saved to {output_filename}")
+
+
 def main():
     # 0. argparser
-    # Create an instance that can receive argument values
-    parser = argparse.ArgumentParser(description='Argparser')
-
-    # Set the argument values to be input (default value can be set)
-    parser.add_argument('--data_number', type=int, default=1)
-    parser.add_argument('--train_or_test', type=str, default="train")
-    parser.add_argument('--draw_figure', type=str, default="N")
-    parser.add_argument('--save_figure', type=str, default="N")
-
-    # Save the above in args
+    parser = argparse.ArgumentParser(description='Wildfire Spread Graph Generator')
+    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction'], help="Mode to run: 'original' for historical data, 'prediction' for model output.")
+    parser.add_argument('--data_number', type=int, default=1, help="[Original Mode] The data number to process.")
+    # New arguments for prediction mode
+    parser.add_argument('--prediction_path', type=str, default='prediction_data/predicted_spread.csv', help="[Prediction Mode] Path to the prediction result CSV.")
+    parser.add_argument('--nodes_path', type=str, help="[Prediction Mode] Path to the master nodes data CSV.")
+    
     args = parser.parse_args()
 
-    # Output the value of the input arguments
+    if args.run_mode == 'prediction':
+        if not args.nodes_path:
+            print("[ERROR] For 'prediction' mode, --nodes_path is required.")
+            return
+        draw_prediction_graph(args.prediction_path, args.nodes_path)
+        return # End execution after drawing prediction
+
+    # --- Original Mode Execution ---
+    print("--- Running in Original Mode ---")
     data_number = args.data_number
-    train_or_test = args.train_or_test
-    draw_figure = args.draw_figure
-    save_figure = args.save_figure
-
-
+    
     # 1. Collecting data
     csv_path = load_data_path(data_number)
     

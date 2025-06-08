@@ -2,6 +2,7 @@ import argparse
 import os
 import sys
 import pandas as pd
+from functools import partial
 
 # --- Module Imports ---
 from prediction_utils import calculate_bearing, calculate_spread_weight, example_destination_calculator
@@ -9,6 +10,9 @@ from prediction_core import predict_wildfire_spread
 from evaluation import calculate_accuracy
 from neighbor_definition import example_neighbor_finder
 from modules.data_load import load_and_enrich_data
+# --- Model Imports ---
+from models import WildfireSpreadNet, calculate_spread_weight_nn
+from prediction_utils import calculate_spread_weight
 
 
 # --- Path Setup ---
@@ -35,6 +39,7 @@ COEFFICIENTS = {
 # --- Main Workflow Orchestration ---
 def main_prediction_workflow(args):
     print("--- Starting Wildfire Spread Prediction Workflow ---")
+    '''
     current_c_coeffs = COEFFICIENTS.copy()
     if args.c_coeffs:
         try:
@@ -48,6 +53,41 @@ def main_prediction_workflow(args):
             print(f"Using C coefficients (default): {current_c_coeffs}")
     else:
         print(f"Using C coefficients (default): {current_c_coeffs}")
+    '''
+
+    # --- Model Selection and Setup ---
+    if args.use_nn:
+        print("Using Neural Network model for spread prediction.")
+        # Initialize the Neural Network model
+        model = WildfireSpreadNet() # Input size is defaulted in the class
+        
+        # Here you would typically load a pre-trained model's weights
+        # For example:
+        # if os.path.exists(args.model_path):
+        #     model.load_state_dict(torch.load(args.model_path))
+        #     print(f"Loaded pre-trained model from {args.model_path}")
+        # else:
+        #     print(f"Warning: Model path {args.model_path} not found. Using randomly initialized weights.")
+
+        # The weight calculator function is the NN function, with the model instance passed in.
+        spread_weight_calculator = partial(calculate_spread_weight_nn, model)
+
+    else:
+        print("Using formula-based model for spread prediction.")
+        current_c_coeffs = COEFFICIENTS.copy()
+        if args.c_coeffs:
+            try:
+                coeffs_override = dict(item.split(':') for item in args.c_coeffs.split(','))
+                for key, value in coeffs_override.items():
+                    if key in current_c_coeffs: current_c_coeffs[key] = float(value)
+                    else: print(f"[WARN] Invalid coefficient '{key}' in --c_coeffs.")
+                print(f"Using C coefficients (overridden or default): {current_c_coeffs}")
+            except Exception as e:
+                print(f"[ERROR] Parsing --c_coeffs: {e}. Using defaults.")
+        
+        # The weight calculator is the formula-based function, with coefficients passed in.
+        spread_weight_calculator = partial(calculate_spread_weight, c_coeffs=current_c_coeffs)
+
 
     # Output CSV path will be in project_root/prediction_data/
     output_dir = os.path.join(project_root, 'prediction_data')
@@ -138,7 +178,8 @@ def main_prediction_workflow(args):
         initial_fire_df,
         all_nodes_df,
         args.num_steps,
-        current_c_coeffs,
+        #current_c_coeffs,
+        spread_weight_calculator, # Pass the selected calculator function
         destination_calculator_func=example_destination_calculator, 
         neighbor_finder_func=_neighbor_finder_wrapper)
 
@@ -174,7 +215,13 @@ if __name__ == '__main__':
     parser.add_argument("--all_nodes_data", type=str, required=True, help="Path to all nodes data CSV (e.g., data/all_nodes_data/all_nodes.csv).")
     parser.add_argument("--actual_fire_data", type=str, help="(Optional) Path to actual fire data CSV for evaluation (e.g., data/actual_fire_data/actual.csv).")
     parser.add_argument("--output_csv_name", type=str, default="predicted_spread.csv", help="Output CSV file name (will be saved in project_root/prediction_data/ dir).")
-    parser.add_argument("--c_coeffs", type=str, help='Override C coefficients. Format: "c1:val1,c2:val2,...".')
+    #parser.add_argument("--c_coeffs", type=str, help='Override C coefficients. Format: "c1:val1,c2:val2,...".')
+    
+    # --- Arguments for model selection and configuration ---
+    parser.add_argument("--use_nn", action='store_true', help="Use the Neural Network model for prediction instead of the formula.")
+    parser.add_argument("--model_path", type=str, default="models/wildfire_model.pth", help="Path to a pre-trained NN model state dictionary.")
+    
+    parser.add_argument("--c_coeffs", type=str, help='Override C coefficients for the formula-based model. Format: "c1:val1,c2:val2,...".')
     parser.add_argument("--num_steps", type=int, default=10, help="Number of new ignition events to predict.")
     parser.add_argument("--neighbor_max_dist", type=float, default=0.1, help="Max distance (degrees) for example neighbor finder.")
     args = parser.parse_args()
