@@ -23,6 +23,7 @@ from modules.graph_module import graph_module
 from Wildfire_predict import main_prediction_workflow
 
 
+'''
 def draw_prediction_graph(prediction_path, nodes_path, output_filename="prediction_graph.html"):
     """
     Visualizes the output of the wildfire prediction model.
@@ -117,6 +118,7 @@ def draw_prediction_graph(prediction_path, nodes_path, output_filename="predicti
     # 5. Save and show graph
     fig.write_html(output_filename)
     print(f"Graph saved to {output_filename}")
+'''
 
 
 def main():
@@ -137,7 +139,7 @@ def main():
     args = parser.parse_args()
 
     if args.run_mode == 'prediction':
-        print(f"--- Running in Prediction & Visualization Mode for data_number: {args.data_number} ---")
+        print(f"--- Running in Prediction & GIF Generation Mode for data_number: {args.data_number} ---")
         try:
             paths = get_prediction_paths(args.data_number)
             initial_path = paths['initial']
@@ -149,47 +151,69 @@ def main():
 
         # Automatically create the initial fire file if it doesn't exist
         if not os.path.exists(initial_path):
-            print(f"[INFO] Initial fire file not found at {initial_path}.")
-            print(f"[INFO] Creating it automatically from the earliest fire in {nodes_path}...")
+            print(f"INFO: Initial fire file not found. Creating it from the earliest fire in {nodes_path}...")
             try:
                 all_nodes_df = pd.read_csv(nodes_path)
                 # Ensure date/time columns exist and create a datetime object for sorting
                 if 'acq_date' in all_nodes_df.columns and 'acq_time' in all_nodes_df.columns:
                     # Convert acq_time to a zero-padded 4-digit string
                     all_nodes_df['acq_time_str'] = all_nodes_df['acq_time'].astype(str).str.zfill(4)
-                    all_nodes_df['datetime'] = pd.to_datetime(all_nodes_df['acq_date'] + ' ' + all_nodes_df['acq_time_str'], format='%Y-%m-%d %H%M')
-                    # Find the single row with the earliest timestamp
+                    all_nodes_df['datetime'] = pd.to_datetime(all_nodes_df['acq_date'].astype(str) + ' ' + all_nodes_df['acq_time_str'], format='%Y-%m-%d %H%M')
                     initial_fire_df = all_nodes_df.loc[[all_nodes_df['datetime'].idxmin()]]
-                    # Save this row as the initial fire file
                     initial_fire_df.to_csv(initial_path, index=False)
-                    print(f"[SUCCESS] Created initial fire file with 1 fire point at {initial_path}.")
+                    print(f"SUCCESS: Created initial fire file at {initial_path}.")
                 else:
-                    raise ValueError("Source data must contain 'acq_date' and 'acq_time' columns to auto-generate initial fire file.")
+                    raise ValueError("Source data must contain 'acq_date' and 'acq_time' columns.")
             except Exception as e:
                 print(f"[ERROR] Failed to auto-generate initial fire file: {e}")
                 return
 
         # Check if prediction needs to be run
         if not os.path.exists(predicted_path) or args.force_predict:
-            if args.force_predict:
-                print(f"Force re-predicting for data_number {args.data_number}.")
-            else:
-                print(f"Prediction result not found at {predicted_path}. Running prediction first.")
-            
-            # Run the prediction workflow
-            # This assumes default parameters for the prediction model for simplicity
-            # More CLI args for this script could be added to control the prediction details
+            print("INFO: Running wildfire prediction...")
             main_prediction_workflow(
                 data_number=args.data_number,
                 use_nn=args.use_nn,
                 num_steps=args.num_steps
-                # Pass other parameters like model_path, c_coeffs etc. if needed
             )
         else:
-            print(f"Found existing prediction file at {predicted_path}. Visualizing directly.")
+            print(f"INFO: Found existing prediction file at {predicted_path}.")
 
-        # Now, visualize the result
-        draw_prediction_graph(predicted_path, str(nodes_path))
+        # --- Transform predicted data for GIF generation ---
+        print("INFO: Preparing predicted data for GIF generation...")
+        try:
+            predictions_df = pd.read_csv(predicted_path)
+            # Use original nodes data to get all features
+            nodes_df = pd.read_csv(nodes_path)
+            
+            # Merge predictions with node features
+            gif_df = pd.merge(predictions_df, nodes_df, on='node_id', how='left')
+            
+            # Rename 'ignition_time' to 'date' for graph_module
+            gif_df.rename(columns={'ignition_time': 'date'}, inplace=True)
+            
+            # Ensure 'date' column is datetime
+            gif_df['date'] = pd.to_datetime(gif_df['date'])
+            
+            # Add a dummy 'confidence' column as graph_module might expect it
+            if 'confidence' not in gif_df.columns:
+                gif_df['confidence'] = 'h' # 'h' for high confidence
+                
+            print("INFO: Data transformed successfully.")
+        except Exception as e:
+            print(f"[ERROR] Failed to process predicted data for GIF generation: {e}")
+            return
+        
+        # Calculate bounds and call graph_module
+        lat_min, lat_max = gif_df['latitude'].min(), gif_df['latitude'].max()
+        lon_min, lon_max = gif_df['longitude'].min(), gif_df['longitude'].max()
+        margin = 0.1
+        lat_margin = (lat_max - lat_min) * margin
+        lon_margin = (lon_max - lon_min) * margin
+        latlon_bounds = (lat_min - lat_margin, lat_max + lat_margin, lon_min - lon_margin, lon_max + lon_margin)
+
+        print("INFO: Calling graph module to generate GIF from prediction...")
+        graph_module(gif_df, f"prediction_{args.data_number}", latlon_bounds=latlon_bounds)
         return
 
     # --- Original Mode Execution ---
