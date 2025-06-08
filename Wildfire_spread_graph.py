@@ -15,10 +15,12 @@ print("--- End Runtime Environment Check ---\n")
 
 import argparse
 
-from data_use.data_path import load_data_path
+from data_use.data_path import load_data_path, get_prediction_paths
 from modules.data_load import load_and_enrich_data
 from utiles.estimate_time import estimate_fire_spread_times
 from modules.graph_module import graph_module
+# Import the prediction workflow to run it if needed
+from Wildfire_predict import main_prediction_workflow
 
 
 def draw_prediction_graph(prediction_path, nodes_path, output_filename="prediction_graph.html"):
@@ -119,28 +121,59 @@ def draw_prediction_graph(prediction_path, nodes_path, output_filename="predicti
 
 def main():
     # 0. argparser
-    parser = argparse.ArgumentParser(description='Wildfire Spread Graph Generator')
-    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction'], help="Mode to run: 'original' for historical data, 'prediction' for model output.")
-    parser.add_argument('--data_number', type=int, default=1, help="[Original Mode] The data number to process.")
-    # New arguments for prediction mode
-    parser.add_argument('--prediction_path', type=str, default='prediction_data/predicted_spread.csv', help="[Prediction Mode] Path to the prediction result CSV.")
-    parser.add_argument('--nodes_path', type=str, help="[Prediction Mode] Path to the master nodes data CSV.")
+    parser = argparse.ArgumentParser(description='Wildfire Spread Graph Generator & Predictor')
     
+    # --- Mode Selection ---
+    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize.")
+    
+    # --- Universal Arguments ---
+    parser.add_argument('--data_number', type=int, required=True, help="The data number to process for any mode.")
+    
+    # --- Prediction-specific Arguments (used if run_mode is 'prediction') ---
+    parser.add_argument('--force_predict', action='store_true', help="[Prediction Mode] Force a new prediction even if a result file exists.")
+    parser.add_argument('--use_nn', action='store_true', help="[Prediction Mode] Use the Neural Network model for prediction.")
+    parser.add_argument("--num_steps", type=int, default=10, help="[Prediction Mode] Number of new ignition events to predict.")
+
     args = parser.parse_args()
 
     if args.run_mode == 'prediction':
-        if not args.nodes_path:
-            print("[ERROR] For 'prediction' mode, --nodes_path is required.")
+        print(f"--- Running in Prediction & Visualization Mode for data_number: {args.data_number} ---")
+        try:
+            paths = get_prediction_paths(args.data_number)
+            predicted_path = paths['predicted']
+            nodes_path = paths['all_nodes']
+        except (ValueError, FileNotFoundError) as e:
+            print(f"[ERROR] Could not retrieve paths: {e}")
             return
-        draw_prediction_graph(args.prediction_path, args.nodes_path)
-        return # End execution after drawing prediction
+            
+        # Check if prediction needs to be run
+        if not os.path.exists(predicted_path) or args.force_predict:
+            if args.force_predict:
+                print(f"Force re-predicting for data_number {args.data_number}.")
+            else:
+                print(f"Prediction result not found at {predicted_path}. Running prediction first.")
+            
+            # Run the prediction workflow
+            # This assumes default parameters for the prediction model for simplicity
+            # More CLI args for this script could be added to control the prediction details
+            main_prediction_workflow(
+                data_number=args.data_number,
+                use_nn=args.use_nn,
+                num_steps=args.num_steps
+                # Pass other parameters like model_path, c_coeffs etc. if needed
+            )
+        else:
+            print(f"Found existing prediction file at {predicted_path}. Visualizing directly.")
+
+        # Now, visualize the result
+        draw_prediction_graph(predicted_path, str(nodes_path))
+        return
 
     # --- Original Mode Execution ---
-    print("--- Running in Original Mode ---")
-    data_number = args.data_number
+    print(f"--- Running in Original Mode for data_number: {args.data_number} ---")
     
     # 1. Collecting data
-    csv_path = load_data_path(data_number)
+    csv_path = load_data_path(args.data_number)
     
     # Generate path for the cached file
     base, ext = os.path.splitext(csv_path)
@@ -208,7 +241,7 @@ def main():
     latlon_bounds = (lat_min, lat_max, lon_min, lon_max)
 
     # 2. Forming a graph
-    graph_module(df, data_number, latlon_bounds=latlon_bounds)
+    graph_module(df, args.data_number, latlon_bounds=latlon_bounds)
     
 
 

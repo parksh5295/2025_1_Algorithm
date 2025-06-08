@@ -66,6 +66,34 @@ def load_data_path(data_number):
     
     return file_path # Return Path object
 
+def get_prediction_paths(data_number):
+    """
+    Returns a dictionary of paths required for prediction for a given data_number.
+    - 'all_nodes': The main dataset, used as the field of all possible nodes.
+    - 'initial': A small subset of the main data, used as the starting fire points.
+    - 'predicted': The path where the output of a prediction should be saved.
+    """
+    # 'all_nodes' is the original dataset from load_data_path
+    all_nodes_path = load_data_path(data_number)
+    
+    # We define a convention for initial and predicted files.
+    # They are stored in a subdirectory named after the data_number within 'prediction_data'.
+    prediction_dir = DATA_DIR.parent / 'prediction_data' / str(data_number)
+    prediction_dir.mkdir(parents=True, exist_ok=True)
+    
+    initial_path = prediction_dir / 'initial_fire.csv'
+    predicted_path = prediction_dir / 'predicted_spread.csv'
+
+    # Note: This function assumes that the 'initial_fire.csv' either exists or will be created.
+    # A utility to create this initial file from the 'all_nodes' data might be needed.
+    # For now, we just return the conventional path.
+    
+    return {
+        'all_nodes': all_nodes_path,
+        'initial': initial_path,
+        'predicted': predicted_path
+    }
+
 # Example usage (in another module):
 # from data_path import load_data_path
 # path_obj = load_data_path(1)
