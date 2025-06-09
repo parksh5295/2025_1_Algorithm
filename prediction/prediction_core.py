@@ -20,8 +20,9 @@ def predict_wildfire_spread(initial_fire_nodes_df, all_nodes_df,
     predicted_ignitions = []
     # burnt_nodes_times stores {node_id: actual_ignition_datetime}
     burnt_nodes_times = {}
-    # event_queue_refined stores (potential_ignition_datetime, target_node_id, source_node_id, source_node_features_at_time_of_spread_calculation)
+    # event_queue_refined stores (potential_ignition_datetime, entry_count, target_node_id, source_node_id, source_node_features)
     event_queue_refined = [] 
+    entry_count = 0
 
     # Initialize with the starting fires and find their first potential spreads
     for _, initial_node_row in initial_fire_nodes_df.iterrows():
@@ -64,13 +65,14 @@ def predict_wildfire_spread(initial_fire_nodes_df, all_nodes_df,
             potential_ignition_at = ignition_time + pd.to_timedelta(spread_duration_hours, unit='hours')
             # Store the features of the source node *at the time this potential spread was calculated*
             heapq.heappush(event_queue_refined, 
-                           (potential_ignition_at, neighbor_id, node_id, initial_node_row.copy()))
+                           (potential_ignition_at, entry_count, neighbor_id, node_id, initial_node_row.copy()))
+            entry_count += 1
 
     # Process events from the queue to predict new ignitions
     newly_ignited_count = 0
     while event_queue_refined and newly_ignited_count < prediction_steps:
         # Get the event with the earliest potential ignition time
-        ignite_at, target_node_id, source_node_id, source_node_features_when_event_created = heapq.heappop(event_queue_refined)
+        ignite_at, _, target_node_id, source_node_id, source_node_features_when_event_created = heapq.heappop(event_queue_refined)
         
         # If target node already burnt by an earlier event, skip this path
         if target_node_id in burnt_nodes_times and burnt_nodes_times[target_node_id] <= ignite_at:
@@ -118,6 +120,7 @@ def predict_wildfire_spread(initial_fire_nodes_df, all_nodes_df,
             # The new potential ignition time is relative to when the current source (newly_ignited_node) ignited
             potential_ignition_at = ignite_at + pd.to_timedelta(spread_duration_hours, unit='hours')
             heapq.heappush(event_queue_refined, 
-                           (potential_ignition_at, next_target_id, target_node_id, newly_ignited_node_features.copy()))
+                           (potential_ignition_at, entry_count, next_target_id, target_node_id, newly_ignited_node_features.copy()))
+            entry_count += 1
             
     return pd.DataFrame(predicted_ignitions) 
