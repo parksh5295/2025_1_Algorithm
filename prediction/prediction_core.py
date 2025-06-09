@@ -70,8 +70,7 @@ def predict_wildfire_spread(initial_fire_nodes_df, all_nodes_df,
     newly_ignited_count = 0
     while event_queue_refined and newly_ignited_count < prediction_steps:
         # Get the event with the earliest potential ignition time
-        ignite_at, target_node_id, source_node_id, 
-        source_node_features_when_event_created = heapq.heappop(event_queue_refined)
+        ignite_at, target_node_id, source_node_id, source_node_features_when_event_created = heapq.heappop(event_queue_refined)
         
         # If target node already burnt by an earlier event, skip this path
         if target_node_id in burnt_nodes_times and burnt_nodes_times[target_node_id] <= ignite_at:
