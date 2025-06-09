@@ -117,6 +117,12 @@ def load_and_enrich_data(csv_path, date_col='date', lat_col='latitude', lon_col=
         return enriched_df
 
     print("\n--- Data Loading and Enrichment Process Finished ---")
+
+    # Rename the final date column to 'ignition_time' for consistency across the project
+    if 'date' in optimized_df.columns:
+        optimized_df.rename(columns={'date': 'ignition_time'}, inplace=True)
+        print(f"   Final date column renamed to 'ignition_time'.")
+
     return optimized_df
 
 # --- Example Usage ---
