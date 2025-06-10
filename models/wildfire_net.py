@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+import pandas as pd
 
 # This model is designed to predict a spread weight based on various environmental features.
 # It takes a flat feature vector as input, unlike the CNN models also in this directory.
@@ -47,15 +48,37 @@ def prepare_input_features(source_node_features, target_node_features, destinati
     )
     wind_factor = windspeed_A * math.cos(math.radians(bearing_AB) - math.radians(wind_dir_A))
 
-    # Feature vector
+    # Feature vector with added safety for NaN values
+    def get_safe_value(features, key):
+        val = features.get(key)
+        return val if pd.notna(val) else 0
+
+    s_temp = get_safe_value(source_node_features, 'temperature')
+    t_temp = get_safe_value(target_node_features, 'temperature')
+    s_hum = get_safe_value(source_node_features, 'humidity')
+    t_hum = get_safe_value(target_node_features, 'humidity')
+    s_precip = get_safe_value(source_node_features, 'precipitation')
+    t_precip = get_safe_value(target_node_features, 'precipitation')
+    s_ndvi = get_safe_value(source_node_features, 'ndvi')
+    t_ndvi = get_safe_value(target_node_features, 'ndvi')
+    s_elev = get_safe_value(source_node_features, 'elevation')
+    t_elev = get_safe_value(target_node_features, 'elevation')
+    
     features = [
         destination_metric,
         wind_factor,
+        '''
         source_node_features.get('temperature', 0) - target_node_features.get('temperature', 0),
         target_node_features.get('humidity', 0) - source_node_features.get('humidity', 0),
         target_node_features.get('precipitation', 0) - source_node_features.get('precipitation', 0),
         target_node_features.get('ndvi', 0) + source_node_features.get('ndvi', 0),
         source_node_features.get('elevation', 0) + source_node_features.get('elevation', 0),
+        '''
+        s_temp - t_temp,
+        t_hum - s_hum,
+        t_precip - s_precip,
+        t_ndvi + s_ndvi,
+        s_elev + t_elev,
     ]
     
     return torch.tensor(features, dtype=torch.float32)
