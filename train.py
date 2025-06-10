@@ -49,13 +49,13 @@ class WildfireDataset(Dataset):
             'latitude': row['source_latitude'], 'longitude': row['source_longitude'],
             'windspeed': row['source_windspeed'], 'winddirection': row['source_winddirection'],
             'temperature': row['source_temperature'], 'humidity': row['source_humidity'],
-            'rainfall': row['source_rainfall'], 'ndvi': row['source_ndvi'], 'elevation': row['source_elevation']
+            'precipitation': row['source_precipitation'], 'ndvi': row['source_ndvi'], 'elevation': row['source_elevation']
         }
         
         target_features = {
             'latitude': row['target_latitude'], 'longitude': row['target_longitude'],
             'temperature': row['target_temperature'], 'humidity': row['target_humidity'],
-            'rainfall': row['target_rainfall'], 'ndvi': row['target_ndvi'], 'elevation': row['target_elevation']
+            'precipitation': row['target_precipitation'], 'ndvi': row['target_ndvi'], 'elevation': row['target_elevation']
         }
         
         # Calculate the destination metric
