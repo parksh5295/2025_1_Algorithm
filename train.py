@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 # --- Project-specific Imports ---
 # Make sure the models and utilities are accessible
 from models.wildfire_net import WildfireSpreadNet, prepare_input_features
-from prediction_utils import example_destination_calculator
+from prediction.prediction_utils import example_destination_calculator
 
 # --- PyTorch Dataset for Wildfire Data ---
 
