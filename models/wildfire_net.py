@@ -39,6 +39,7 @@ def _calculate_bearing(lat1, lon1, lat2, lon2):
 def prepare_input_features(source_node_features, target_node_features, destination_metric):
     """Prepares a flat feature tensor for the neural network from source and target node data."""
     
+    '''
     # Wind components
     windspeed_A = source_node_features.get('windspeed', 0)
     wind_dir_A = source_node_features.get('winddirection', 0)
@@ -49,10 +50,25 @@ def prepare_input_features(source_node_features, target_node_features, destinati
     wind_factor = windspeed_A * math.cos(math.radians(bearing_AB) - math.radians(wind_dir_A))
 
     # Feature vector with added safety for NaN values
+    '''
+    # Helper function to safely get values, returning 0 if NaN or missing.
     def get_safe_value(features, key):
         val = features.get(key)
         return val if pd.notna(val) else 0
 
+    # Wind components using safe getter
+    windspeed_A = get_safe_value(source_node_features, 'windspeed')
+    wind_dir_A = get_safe_value(source_node_features, 'winddirection')
+    
+    s_lat = get_safe_value(source_node_features, 'latitude')
+    s_lon = get_safe_value(source_node_features, 'longitude')
+    t_lat = get_safe_value(target_node_features, 'latitude')
+    t_lon = get_safe_value(target_node_features, 'longitude')
+
+    bearing_AB = _calculate_bearing(s_lat, s_lon, t_lat, t_lon)
+    wind_factor = windspeed_A * math.cos(math.radians(bearing_AB) - math.radians(wind_dir_A))
+
+    # All other features using safe getter
     s_temp = get_safe_value(source_node_features, 'temperature')
     t_temp = get_safe_value(target_node_features, 'temperature')
     s_hum = get_safe_value(source_node_features, 'humidity')
@@ -67,11 +83,6 @@ def prepare_input_features(source_node_features, target_node_features, destinati
     features = [
         destination_metric,
         wind_factor,
-        # source_node_features.get('temperature', 0) - target_node_features.get('temperature', 0),
-        # target_node_features.get('humidity', 0) - source_node_features.get('humidity', 0),
-        # target_node_features.get('precipitation', 0) - source_node_features.get('precipitation', 0),
-        # target_node_features.get('ndvi', 0) + source_node_features.get('ndvi', 0),
-        # source_node_features.get('elevation', 0) + source_node_features.get('elevation', 0),
         s_temp - t_temp,
         t_hum - s_hum,
         t_precip - s_precip,
