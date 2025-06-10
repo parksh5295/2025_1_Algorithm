@@ -67,13 +67,11 @@ def prepare_input_features(source_node_features, target_node_features, destinati
     features = [
         destination_metric,
         wind_factor,
-        '''
-        source_node_features.get('temperature', 0) - target_node_features.get('temperature', 0),
-        target_node_features.get('humidity', 0) - source_node_features.get('humidity', 0),
-        target_node_features.get('precipitation', 0) - source_node_features.get('precipitation', 0),
-        target_node_features.get('ndvi', 0) + source_node_features.get('ndvi', 0),
-        source_node_features.get('elevation', 0) + source_node_features.get('elevation', 0),
-        '''
+        # source_node_features.get('temperature', 0) - target_node_features.get('temperature', 0),
+        # target_node_features.get('humidity', 0) - source_node_features.get('humidity', 0),
+        # target_node_features.get('precipitation', 0) - source_node_features.get('precipitation', 0),
+        # target_node_features.get('ndvi', 0) + source_node_features.get('ndvi', 0),
+        # source_node_features.get('elevation', 0) + source_node_features.get('elevation', 0),
         s_temp - t_temp,
         t_hum - s_hum,
         t_precip - s_precip,
