@@ -183,9 +183,20 @@ def main():
         print("INFO: Preparing predicted data for GIF generation...")
         try:
             predictions_df = pd.read_csv(predicted_path)
-            # Use original nodes data to get all features
-            nodes_df = pd.read_csv(nodes_path)
-            
+            # Use original nodes data and ensure it is enriched with environmental features
+            # This is the crucial fix: use load_and_enrich_data to ensure elevation etc. are present
+            print(f"INFO: Loading and enriching all nodes data from {nodes_path}...")
+            # nodes_df = pd.read_csv(nodes_path)
+            nodes_df = load_and_enrich_data(
+                csv_path=str(nodes_path),
+                date_col='acq_date',
+                time_col='acq_time',
+                lat_col='latitude',
+                lon_col='longitude'
+            )
+            if nodes_df is None:
+                raise ValueError("Failed to load or enrich nodes data.")
+
             # Defensive coding: Ensure node_id exists in nodes_df
             if 'node_id' not in nodes_df.columns:
                 print("[WARN] 'node_id' not found in nodes_df. Creating it from index.")
