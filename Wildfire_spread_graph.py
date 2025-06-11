@@ -197,18 +197,30 @@ def main():
             if nodes_df is None:
                 raise ValueError("Failed to load or enrich nodes data.")
 
+            # The crucial 'ignition_time' comes from the prediction results. Rename it to 'date'.
+            if 'ignition_time' in predictions_df.columns:
+                predictions_df.rename(columns={'ignition_time': 'date'}, inplace=True)
+            else:
+                raise KeyError("Prediction results must have an 'ignition_time' column.")
+
             # Defensive coding: Ensure node_id exists in nodes_df
             if 'node_id' not in nodes_df.columns:
                 print("[WARN] 'node_id' not found in nodes_df. Creating it from index.")
                 nodes_df['node_id'] = nodes_df.index
-
-            # Merge predictions with node features
+            
+            # Merge predictions (with the correct 'date') with enriched node features
             gif_df = pd.merge(predictions_df, nodes_df, on='node_id', how='left')
             
+            '''
             # Rename 'ignition_time' to 'date' for graph_module
-            gif_df.rename(columns={'ignition_time': 'date'}, inplace=True)
+            # This might be redundant now but is safe to keep.
+            if 'ignition_time' in gif_df.columns and 'date' not in gif_df.columns:
+                gif_df.rename(columns={'ignition_time': 'date'}, inplace=True)
+            '''
             
             # Ensure 'date' column is datetime
+            if 'date' not in gif_df.columns:
+                raise KeyError("Crucial 'date' column is missing before passing to graph module.")
             gif_df['date'] = pd.to_datetime(gif_df['date'])
             
             # Add a dummy 'confidence' column as graph_module might expect it
