@@ -186,6 +186,11 @@ def main():
             # Use original nodes data to get all features
             nodes_df = pd.read_csv(nodes_path)
             
+            # Defensive coding: Ensure node_id exists in nodes_df
+            if 'node_id' not in nodes_df.columns:
+                print("[WARN] 'node_id' not found in nodes_df. Creating it from index.")
+                nodes_df['node_id'] = nodes_df.index
+
             # Merge predictions with node features
             gif_df = pd.merge(predictions_df, nodes_df, on='node_id', how='left')
             
