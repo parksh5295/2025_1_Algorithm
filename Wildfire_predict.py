@@ -3,6 +3,7 @@ import os
 import sys
 import pandas as pd
 from functools import partial
+import numpy as np
 
 # --- Module Imports ---
 from prediction.prediction_utils import calculate_bearing, calculate_spread_weight, example_destination_calculator
@@ -35,12 +36,14 @@ COEFFICIENTS = {
     'c6': 0.2,  # For NDVI sum
     'c7': 0.05  # For Elevation sum (Note: sign in formula might need review)
 }
+TIME_STEP_MINUTES = 30 # The interval for each prediction step
 
 # --- Main Workflow Orchestration ---
-def main_prediction_workflow(data_number, use_nn=False, model_path=None, c_coeffs_str=None, num_steps=10, neighbor_max_dist=0.1, actual_fire_data_path=None):
+def main_prediction_workflow(data_number, use_nn=False, model_path=None, c_coeffs_str=None, num_steps=None, neighbor_max_dist=0.1, actual_fire_data_path=None):
     """
     Main workflow for running wildfire spread prediction.
     It now takes configuration as arguments instead of parsing args directly.
+    If num_steps is not provided, it is calculated based on the data's time range.
     """
     print(f"--- Starting Wildfire Spread Prediction for data_number: {data_number} ---")
 
@@ -95,6 +98,24 @@ def main_prediction_workflow(data_number, use_nn=False, model_path=None, c_coeff
         print(f"[ERROR] Data loading failed: {e}. Exiting."); sys.exit(1)
     print("Data loaded successfully.")
 
+    # --- Calculate num_steps if not provided ---
+    if num_steps is None:
+        print("`num_steps` not provided. Calculating from data time range...")
+        start_time = pd.to_datetime(initial_fire_df['ignition_time'].min())
+        # The 'date' column from load_and_enrich_data is what we need for the full range
+        end_time = pd.to_datetime(all_nodes_df['date'].max())
+        
+        duration_minutes = (end_time - start_time).total_seconds() / 60
+        
+        if duration_minutes > 0:
+            # Calculate how many 30-minute steps fit into the duration
+            num_steps = int(np.ceil(duration_minutes / TIME_STEP_MINUTES))
+            print(f"Start time: {start_time}, End time: {end_time}")
+            print(f"Total duration: {duration_minutes:.2f} minutes. Calculated num_steps: {num_steps}")
+        else:
+            print("Warning: Could not determine a valid time range. Defaulting to 10 steps.")
+            num_steps = 10
+
     # --- Prediction Execution ---
     def _neighbor_finder_wrapper(node_id, all_nodes, excluded_node_ids):
         return example_neighbor_finder(node_id, all_nodes, excluded_node_ids, max_dist_config=neighbor_max_dist)
@@ -106,7 +127,8 @@ def main_prediction_workflow(data_number, use_nn=False, model_path=None, c_coeff
         num_steps,
         spread_weight_calculator,
         destination_calculator_func=example_destination_calculator, 
-        neighbor_finder_func=_neighbor_finder_wrapper)
+        neighbor_finder_func=_neighbor_finder_wrapper,
+        time_step_minutes=TIME_STEP_MINUTES)
 
     # --- Save and Evaluate ---
     if predicted_df.empty:
@@ -140,7 +162,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_nn", action='store_true', help="Use the Neural Network model for prediction.")
     parser.add_argument("--model_path", type=str, default="models/wildfire_model.pth", help="Path to a pre-trained NN model.")
     parser.add_argument("--c_coeffs", type=str, help='Override C coefficients for the formula-based model.')
-    parser.add_argument("--num_steps", type=int, default=10, help="Number of new ignition events to predict.")
+    parser.add_argument("--num_steps", type=int, default=None, help="Number of new ignition events to predict. If not set, it's calculated from the data's time range.")
     parser.add_argument("--neighbor_max_dist", type=float, default=0.1, help="Max distance for neighbor finding.")
     parser.add_argument("--actual_fire_data", type=str, help="(Optional) Path to actual fire data CSV for evaluation.")
 

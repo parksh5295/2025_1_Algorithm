@@ -133,6 +133,7 @@ def main():
     
     # --- Prediction-specific Arguments (used if run_mode is 'prediction') ---
     parser.add_argument('--force_predict', action='store_true', help="[Prediction Mode] Force a new prediction even if a result file exists.")
+    parser.add_argument('--regenerate-graph', action='store_true', help="[Prediction Mode] Force regeneration of the GIF graph even if it exists.")
     parser.add_argument('--use_nn', action='store_true', help="[Prediction Mode] Use the Neural Network model for prediction.")
     parser.add_argument("--num_steps", type=int, default=10, help="[Prediction Mode] Number of new ignition events to predict.")
 
@@ -232,16 +233,29 @@ def main():
             print(f"[ERROR] Failed to process predicted data for GIF generation: {e}")
             return
         
-        # Calculate bounds and call graph_module
-        lat_min, lat_max = gif_df['latitude'].min(), gif_df['latitude'].max()
-        lon_min, lon_max = gif_df['longitude'].min(), gif_df['longitude'].max()
+        # --- Boundary Calculation (using ALL original nodes for consistency) ---
+        # Calculate bounds from the complete, original dataset (nodes_df) so the map view is stable
+        # between original and prediction GIFs.
+        print("INFO: Calculating map boundaries from the full original dataset...")
+        lat_min, lat_max = nodes_df['latitude'].min(), nodes_df['latitude'].max()
+        lon_min, lon_max = nodes_df['longitude'].min(), nodes_df['longitude'].max()
         margin = 0.1
         lat_margin = (lat_max - lat_min) * margin
         lon_margin = (lon_max - lon_min) * margin
         latlon_bounds = (lat_min - lat_margin, lat_max + lat_margin, lon_min - lon_margin, lon_max + lon_margin)
+        print(f"INFO: Map bounds set to: Lat({lat_min:.4f}-{lat_max:.4f}), Lon({lon_min:.4f}-{lon_max:.4f})")
 
-        print("INFO: Calling graph module to generate GIF from prediction...")
-        graph_module(gif_df, f"prediction_{args.data_number}", latlon_bounds=latlon_bounds)
+        # --- GIF Generation (with check) ---
+        # Determine project root to construct the expected GIF path
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_script_dir)
+        gif_path = os.path.join(project_root, 'data', 'graph', 'gif', f"animation_{str(args.data_number).zfill(4)}.gif")
+
+        if not os.path.exists(gif_path) or args.regenerate_graph:
+            print("INFO: Calling graph module to generate GIF from prediction...")
+            graph_module(gif_df, f"prediction_{args.data_number}", latlon_bounds=latlon_bounds)
+        else:
+            print(f"INFO: GIF already exists at {gif_path}. Use --regenerate-graph to re-create it.")
         return
 
     # --- Original Mode Execution ---

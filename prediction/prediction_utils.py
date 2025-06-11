@@ -54,14 +54,31 @@ def calculate_spread_weight(source_node_features, target_node_features,
     # Elevation sum (A+B)
     elevation_sum = source_node_features['elevation'] + target_node_features['elevation']
 
+    # --- Spread Weight Formula ---
+    # A higher weight means a higher probability of spreading.
+    # Positive terms increase spread likelihood, negative terms decrease it.
     weight = (
-        c_coeffs['c1'] * destination_metric -
-        c_coeffs['c2'] * windspeed_A * math.cos(theta_AB_rad - phi_A_rad) -
-        c_coeffs['c3'] * temp_diff +
-        c_coeffs['c4'] * humidity_diff -
-        c_coeffs['c5'] * rainfall_diff -
-        c_coeffs['c6'] * ndvi_sum -
-        c_coeffs['c7'] * elevation_sum
+        # c1: Destination Metric (e.g., distance). Should be negative. Closer = more likely.
+        -c_coeffs['c1'] * destination_metric +
+        
+        # c2: Wind Assistance. Should be positive. Wind blowing towards target = more likely.
+        +c_coeffs['c2'] * windspeed_A * math.cos(theta_AB_rad - phi_A_rad) +
+        
+        # c3: Temperature Difference (Source - Target). Negative sign means spread is less likely if source is hotter.
+        # This can be debated, but for now, we leave it. A fire spreading to a cooler area.
+        -c_coeffs['c3'] * temp_diff +
+        
+        # c4: Humidity Difference (Target - Source). Should be negative. Higher humidity at target = less likely.
+        -c_coeffs['c4'] * humidity_diff -
+        
+        # c5: Rainfall Difference (Target - Source). Negative sign is correct. More rain at target = less likely.
+        -c_coeffs['c5'] * rainfall_diff +
+        
+        # c6: NDVI (Vegetation) Sum. Should be positive. More vegetation = more fuel = more likely.
+        +c_coeffs['c6'] * ndvi_sum -
+        
+        # c7: Elevation Sum. Negative sign means spread is less likely at higher elevations. Plausible.
+        -c_coeffs['c7'] * elevation_sum
     )
     return max(weight, 0.0001)
 
