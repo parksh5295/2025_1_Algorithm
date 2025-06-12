@@ -85,8 +85,6 @@ def main_prediction_workflow(data_number, use_nn=False, model_path=None, c_coeff
     try:
         initial_fire_df = load_and_enrich_data(csv_path=str(initial_fire_path), date_col='acq_date', time_col='acq_time', lat_col='latitude', lon_col='longitude')
         if initial_fire_df is None: raise ValueError("Failed to load initial fire data.")
-        if 'date' in initial_fire_df.columns:
-            initial_fire_df.rename(columns={'date': 'ignition_time'}, inplace=True)
         if 'node_id' not in initial_fire_df.columns: initial_fire_df['node_id'] = initial_fire_df.index
         
         print(f"Loading and enriching all nodes data from: {all_nodes_path}")
@@ -103,7 +101,7 @@ def main_prediction_workflow(data_number, use_nn=False, model_path=None, c_coeff
         print("`num_steps` not provided. Calculating from data time range...")
         start_time = pd.to_datetime(initial_fire_df['ignition_time'].min())
         # The 'date' column from load_and_enrich_data is what we need for the full range
-        end_time = pd.to_datetime(all_nodes_df['date'].max())
+        end_time = pd.to_datetime(all_nodes_df['ignition_time'].max())
         
         duration_minutes = (end_time - start_time).total_seconds() / 60
         
