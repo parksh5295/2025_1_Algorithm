@@ -124,7 +124,7 @@ def draw_prediction_graph(prediction_path, nodes_path, output_filename="predicti
 def main():
     # 0. argparser
     parser = argparse.ArgumentParser(description='Wildfire Spread Graph Generator & Predictor')
-    
+
     # --- Mode Selection ---
     parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize.")
     

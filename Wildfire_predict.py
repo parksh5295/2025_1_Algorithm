@@ -36,7 +36,7 @@ COEFFICIENTS = {
     'c6': 0.2,  # For NDVI sum
     'c7': 0.05  # For Elevation sum (Note: sign in formula might need review)
 }
-TIME_STEP_MINUTES = 30 # The interval for each prediction step
+TIME_STEP_MINUTES = 15 # The interval for each prediction step
 
 # --- Main Workflow Orchestration ---
 def main_prediction_workflow(data_number, use_nn=False, model_path=None, c_coeffs_str=None, num_steps=None, neighbor_max_dist=0.1, actual_fire_data_path=None):

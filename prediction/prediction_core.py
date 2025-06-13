@@ -12,7 +12,7 @@ def predict_wildfire_spread(
     spread_weight_calculator: callable,
     destination_calculator_func: callable = example_destination_calculator,
     neighbor_finder_func: callable = example_neighbor_finder,
-    time_step_minutes: int = 30,
+    time_step_minutes: int = 15,
     spread_threshold: float = 0.5
 ) -> pd.DataFrame:
     """
