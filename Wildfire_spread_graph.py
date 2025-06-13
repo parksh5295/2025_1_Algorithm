@@ -152,7 +152,7 @@ def main():
 
         # Automatically create the initial fire file if it doesn't exist
         if not os.path.exists(initial_path):
-            print(f"INFO: Initial fire file not found. Creating it from the earliest fire in {nodes_path}...")
+            print(f"INFO: Initial fire file not found. Creating it from the earliest fires in {nodes_path}...")
             try:
                 all_nodes_df = pd.read_csv(nodes_path)
                 # Ensure date/time columns exist and create a datetime object for sorting
@@ -160,9 +160,15 @@ def main():
                     # Convert acq_time to a zero-padded 4-digit string
                     all_nodes_df['acq_time_str'] = all_nodes_df['acq_time'].astype(str).str.zfill(4)
                     all_nodes_df['datetime'] = pd.to_datetime(all_nodes_df['acq_date'].astype(str) + ' ' + all_nodes_df['acq_time_str'], format='%Y-%m-%d %H%M')
-                    initial_fire_df = all_nodes_df.loc[[all_nodes_df['datetime'].idxmin()]]
+                    
+                    # Find the earliest time
+                    earliest_time = all_nodes_df['datetime'].min()
+                    # Include all nodes within 30 minutes of the earliest time
+                    time_threshold = earliest_time + pd.Timedelta(minutes=30)
+                    initial_fire_df = all_nodes_df[all_nodes_df['datetime'] <= time_threshold]
+                    
                     initial_fire_df.to_csv(initial_path, index=False)
-                    print(f"SUCCESS: Created initial fire file at {initial_path}.")
+                    print(f"SUCCESS: Created initial fire file with {len(initial_fire_df)} nodes at {initial_path}.")
                 else:
                     raise ValueError("Source data must contain 'acq_date' and 'acq_time' columns.")
             except Exception as e:
