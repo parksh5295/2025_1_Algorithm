@@ -216,7 +216,22 @@ def main():
                 nodes_df['node_id'] = nodes_df.index
             
             # Merge predictions (with the correct 'date') with enriched node features
-            gif_df = pd.merge(predictions_df, nodes_df, on='node_id', how='left')
+            # gif_df = pd.merge(predictions_df, nodes_df, on='node_id', how='left')
+            # Old merge created duplicate columns (_x, _y) causing key errors down the line.
+            # New approach: select only the essential prediction columns from predictions_df
+            # and merge them with the fully enriched nodes_df.
+            prediction_cols = ['node_id', 'date']
+            if 'source_node_id' in predictions_df.columns:
+                prediction_cols.append('source_node_id')
+            if 'prediction_step_count' in predictions_df.columns:
+                prediction_cols.append('prediction_step_count')
+
+            gif_df = pd.merge(
+                predictions_df[prediction_cols], 
+                nodes_df, 
+                on='node_id', 
+                how='left'
+            )
             
             '''
             # Rename 'ignition_time' to 'date' for graph_module
