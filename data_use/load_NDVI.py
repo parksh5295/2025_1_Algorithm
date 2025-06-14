@@ -5,6 +5,15 @@ import ee
 import pandas as pd # Import pandas for timestamp check
 from pathlib import Path
 import sys # For potential exit on error
+import numpy as np
+from datetime import datetime, timedelta
+import time
+from typing import List, Tuple, Dict, Optional, Union
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
 
 # Service account information
 SERVICE_ACCOUNT = 'earth-engine-accessor@sustained-drake-458413-e1.iam.gserviceaccount.com'
@@ -183,3 +192,103 @@ def get_ndvi(latitude, longitude, date):
         print(f"[ERROR] Failed to get NDVI for {latitude},{longitude} after all attempts.")
     
     return ndvi_value
+
+def get_NDVI_for_batch(lats: List[float], lons: List[float], date_str: str, 
+                      batch_size: int = 30) -> Dict[Tuple[float, float], float]:
+    """
+    Get NDVI values for a batch of coordinates.
+    
+    Args:
+        lats: List of latitudes
+        lons: List of longitudes
+        date_str: Date string in 'YYYY-MM-DD' format
+        batch_size: Number of coordinates to process in each batch
+        
+    Returns:
+        Dictionary mapping (lat, lon) tuples to NDVI values
+    """
+    results = {}
+    
+    # Process coordinates in batches
+    for i in range(0, len(lats), batch_size):
+        batch_lats = lats[i:i + batch_size]
+        batch_lons = lons[i:i + batch_size]
+        
+        # Create feature collection for the batch
+        features = []
+        for lat, lon in zip(batch_lats, batch_lons):
+            point = ee.Geometry.Point([lon, lat])
+            features.append(ee.Feature(point, {'lat': lat, 'lon': lon}))
+        fc = ee.FeatureCollection(features)
+        
+        # Get NDVI for the batch
+        batch_results = get_NDVI_for_date(fc, date_str)
+        results.update(batch_results)
+        
+        # Add a small delay between batches to avoid overwhelming the API
+        if i + batch_size < len(lats):
+            time.sleep(1)
+    
+    return results
+
+def get_NDVI_for_date(fc: ee.FeatureCollection, date_str: str) -> Dict[Tuple[float, float], float]:
+    """
+    Get NDVI values for a feature collection on a specific date.
+    
+    Args:
+        fc: Earth Engine FeatureCollection containing points
+        date_str: Date string in 'YYYY-MM-DD' format
+        
+    Returns:
+        Dictionary mapping (lat, lon) tuples to NDVI values
+    """
+    date = datetime.strptime(date_str, '%Y-%m-%d')
+    start_date = (date - timedelta(days=30)).strftime('%Y-%m-%d')
+    end_date = (date + timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    # Get MODIS NDVI data
+    modis = ee.ImageCollection('MODIS/006/MOD13Q1')
+    ndvi = modis.filterDate(start_date, end_date).select('NDVI')
+    
+    # Get the most recent image
+    image = ndvi.sort('system:time_start', False).first()
+    
+    # Sample the image at the points
+    sampled = image.sampleRegions(
+        collection=fc,
+        scale=250,  # MODIS resolution
+        geometries=True
+    )
+    
+    # Get the results
+    results = {}
+    for feature in sampled.getInfo()['features']:
+        lat = feature['properties']['lat']
+        lon = feature['properties']['lon']
+        ndvi_value = feature['properties']['NDVI'] / 10000.0  # Scale factor
+        results[(lat, lon)] = ndvi_value
+    
+    return results
+
+def load_NDVI(df: pd.DataFrame, date_str: str) -> pd.DataFrame:
+    """
+    Load NDVI data for all coordinates in the DataFrame.
+    
+    Args:
+        df: DataFrame containing 'latitude' and 'longitude' columns
+        date_str: Date string in 'YYYY-MM-DD' format
+        
+    Returns:
+        DataFrame with added 'NDVI' column
+    """
+    # Extract coordinates
+    lats = df['latitude'].tolist()
+    lons = df['longitude'].tolist()
+    
+    # Get NDVI values for all coordinates in batches
+    ndvi_values = get_NDVI_for_batch(lats, lons, date_str)
+    
+    # Add NDVI values to DataFrame
+    df['NDVI'] = df.apply(lambda row: ndvi_values.get((row['latitude'], row['longitude']), np.nan), axis=1)
+    
+    return df
