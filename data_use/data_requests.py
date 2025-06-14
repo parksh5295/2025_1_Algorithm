@@ -178,7 +178,9 @@ def add_environmental_features(df):
     print(f"All API tasks (initial and retries) have been processed.")
     # The old loop structure is gone.
 
+    # Step 2: Map the fetched weather results back to the original DataFrame
     print("Mapping fetched weather data to DataFrame...")
+    '''
     processed_rows_weather = 0
     for index, row in df.iterrows():
         lat = row.get('latitude')
@@ -224,6 +226,8 @@ def add_environmental_features(df):
         except Exception as e:
             print(f"[WARN] Row {index} error during weather mapping: {e}. Weather values will be NA.")
             continue
+    '''
+    df = _map_weather_to_dataframe(df.copy(), all_fetched_weather_data)
 
     print("Fetching and mapping elevation and NDVI data...")
     processed_rows_other = 0
@@ -267,3 +271,75 @@ def add_environmental_features(df):
 # If there are other functions in this file, they should be preserved.
 # The edit tool will attempt to merge this change.
 # Ensure no other functions are accidentally removed or altered if they exist.
+
+def _map_weather_to_dataframe(df: pd.DataFrame, weather_results: dict) -> pd.DataFrame:
+    """
+    Maps the fetched weather data (keyed by lat, lon, date) back to the DataFrame rows.
+    It uses pandas merge for efficiency, matching fire ignition time to the closest hour.
+    """
+    if not weather_results:
+        print("[WARNING] Weather results dictionary is empty. Skipping mapping.")
+        return df
+
+    # Create a temporary mapping DataFrame from the weather results
+    records = []
+    for (date_str, lat, lon), daily_data in weather_results.items():
+        if daily_data and not daily_data.get('error'):
+            # Extract the hourly data lists
+            time_list = daily_data.get('time', [])
+            temp_list = daily_data.get('temperature_2m', [])
+            precip_list = daily_data.get('precipitation', [])
+            humid_list = daily_data.get('relative_humidity_2m', [])
+            ws_list = daily_data.get('wind_speed_10m', [])
+            wd_list = daily_data.get('wind_direction_10m', [])
+
+            # Ensure all lists have the same length
+            if not (len(time_list) == len(temp_list) == len(precip_list) == len(humid_list) == len(ws_list) == len(wd_list)):
+                continue
+
+            for i in range(len(time_list)):
+                records.append({
+                    'lookup_date': date_str,
+                    'latitude': lat,
+                    'longitude': lon,
+                    'hour': pd.to_datetime(time_list[i]).hour,
+                    'temperature': temp_list[i],
+                    'precipitation': precip_list[i],
+                    'humidity': humid_list[i],
+                    'windspeed': ws_list[i],
+                    'winddirection': wd_list[i]
+                })
+
+    if not records:
+        print("[WARNING] No valid hourly weather data found to process. Skipping mapping.")
+        return df
+
+    weather_df = pd.DataFrame(records)
+    
+    # Round coordinates for a more robust join
+    weather_df['lat_rounded'] = weather_df['latitude'].round(5)
+    weather_df['lon_rounded'] = weather_df['longitude'].round(5)
+    
+    # Prepare the original DataFrame for merging
+    df['lookup_date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+    df['hour'] = pd.to_datetime(df['date']).dt.hour
+    df['lat_rounded'] = df['latitude'].round(5)
+    df['lon_rounded'] = df['longitude'].round(5)
+
+    # Merge weather data
+    # Drop original weather columns to avoid duplication issues
+    cols_to_drop = ['temperature', 'precipitation', 'humidity', 'windspeed', 'winddirection']
+    df_to_merge = df.drop(columns=[col for col in cols_to_drop if col in df.columns])
+
+    merged_df = pd.merge(
+        df_to_merge,
+        weather_df,
+        on=['lookup_date', 'hour', 'lat_rounded', 'lon_rounded'],
+        how='left'
+    )
+
+    # Clean up temporary columns
+    final_df = merged_df.drop(columns=['lookup_date', 'hour', 'lat_rounded', 'lon_rounded', 'latitude_y', 'longitude_y'], errors='ignore')
+    final_df = final_df.rename(columns={'latitude_x': 'latitude', 'longitude_x': 'longitude'})
+    
+    return final_df

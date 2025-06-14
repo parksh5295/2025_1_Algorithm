@@ -135,7 +135,7 @@ def main():
     parser.add_argument('--force_predict', action='store_true', help="[Prediction Mode] Force a new prediction even if a result file exists.")
     parser.add_argument('--regenerate-graph', action='store_true', help="[Prediction Mode] Force regeneration of the GIF graph even if it exists.")
     parser.add_argument('--use_nn', action='store_true', help="[Prediction Mode] Use the Neural Network model for prediction.")
-    parser.add_argument("--num_steps", type=int, default=50, help="[Prediction Mode] Number of new ignition events to predict.")
+    parser.add_argument("--num_steps", type=int, default=25, help="[Prediction Mode] Number of new ignition events to predict.")
 
     args = parser.parse_args()
 
