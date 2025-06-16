@@ -2,7 +2,26 @@ import argparse
 import os
 import pandas as pd
 from utiles.estimate_time import add_datetime_column
-import glob
+
+
+def get_simgraph_path(data_number):
+    base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+    if data_number == 1:
+        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608350(250314-05)', 'simgraph_similar_fire_nrt_SV-C2_608350.csv')
+    elif data_number == 2:
+        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608316(230402-12)', 'simgraph_similar_fire_archive_SV-C2_608316.csv')
+    elif data_number == 3:
+        return os.path.join(base_dir, 'DL_FIRE_J2V-C2_37482(2025-California)', 'simgraph_similar_fire_nrt_J2V-C2_37482.csv')
+    elif data_number == 4:
+        return os.path.join(base_dir, 'DL_FIRE_SV-C2_37483(2019-Australia)', 'simgraph_similar_fire_archive_SV-C2_37483.csv')
+    elif data_number == 5:
+        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608318(220528-03)', 'simgraph_similar_fire_archive_SV-C2_608318.csv')
+    elif data_number == 6:
+        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608319(220405-12)', 'simgraph_similar_fire_archive_SV-C2_608319.csv')
+    elif data_number == 7:
+        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608320(220304-14)', 'simgraph_similar_fire_archive_SV-C2_608320.csv')
+    else:
+        raise ValueError("Invalid data number")
 
 def main():
     parser = argparse.ArgumentParser(description="Create a networkx/matplotlib style wildfire spread GIF from simgraph data (no API enrich, 원본 스타일)")
@@ -10,14 +29,14 @@ def main():
     args = parser.parse_args()
 
     # 1. Find the path to the simgraph file (data/ full recursive navigation)
-    data_number_str = str(args.data_number).zfill(4)
-    data_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-    pattern = f"simgraph_*{data_number_str}*.csv"
-    simgraph_candidates = glob.glob(os.path.join(data_root, '**', pattern), recursive=True)
-    if not simgraph_candidates:
-        print(f"[ERROR] The file simgraph_*{data_number_str}*.csv was not found.")
+    try:
+        simgraph_path = get_simgraph_path(args.data_number)
+    except Exception as e:
+        print(f"[ERROR] {e}")
         return
-    simgraph_path = simgraph_candidates[0]
+    if not os.path.exists(simgraph_path):
+        print(f"[ERROR] {simgraph_path} File not found.")
+        return
     print(f"[INFO] Loading simgraph data from {simgraph_path}")
 
     # 2. Importing data
