@@ -346,9 +346,25 @@ def main():
         print(f"INFO: Loading simgraph data from {simgraph_path}...")
         df = pd.read_csv(simgraph_path)
         
-        # This data comes from the original dataset, so it should have the necessary columns.
-        # Ensure 'date' column is created for graph_module
-        df = add_datetime_column(df, 'acq_date', 'acq_time')
+        # 환경변수 컬럼 추가 (고도, NDVI, 날씨 등)
+        df = load_and_enrich_data(
+            csv_path=simgraph_path,
+            date_col='acq_date',
+            time_col='acq_time',
+            lat_col='latitude',
+            lon_col='longitude'
+        )
+        if df is None:
+            print("[ERROR] Failed to enrich simgraph data with environmental features.")
+            return
+
+        # Ensure 'date' column exists
+        if 'date' not in df.columns:
+            if 'acq_date' in df.columns and 'acq_time' in df.columns:
+                df = add_datetime_column(df, 'acq_date', 'acq_time')
+            else:
+                print("[ERROR] No 'date' or ('acq_date'+'acq_time') columns found in simgraph data.")
+                return
 
         # Add dummy confidence if it doesn't exist
         if 'confidence' not in df.columns:
@@ -386,6 +402,18 @@ def main():
 
         print(f"INFO: Loading simgraph data from {simgraph_path}...")
         df = pd.read_csv(simgraph_path)
+
+        # Add environmental variable columns (altitude, NDVI, weather, etc.)
+        df = load_and_enrich_data(
+            csv_path=simgraph_path,
+            date_col='acq_date',
+            time_col='acq_time',
+            lat_col='latitude',
+            lon_col='longitude'
+        )
+        if df is None:
+            print("[ERROR] Failed to enrich simgraph data with environmental features.")
+            return
 
         # Ensure 'date' column exists
         if 'date' not in df.columns:
