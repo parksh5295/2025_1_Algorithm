@@ -1,6 +1,9 @@
 import pandas as pd
 import os
-import shutil
+import plotly.graph_objects as go
+import imageio
+from tqdm import tqdm
+
 # Re-enable parallel processing import
 import concurrent.futures 
 import time
