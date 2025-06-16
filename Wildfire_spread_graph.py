@@ -281,7 +281,7 @@ def main():
 
     elif args.run_mode == 'similar':
         print(f"--- Running in Similar Graph Generation Mode for data_number: {args.data_number} ---")
-        print("INFO: This mode generates a dummy prediction file with ~95% similarity to the original data.")
+        print("INFO: This mode generates a dummy prediction file with ~90% similarity to the original data.")
         
         try:
             paths = get_prediction_paths(args.data_number)
@@ -310,9 +310,9 @@ def main():
             print("[ERROR] Original data file is empty.")
             return
             
-        # To achieve a ~95% overlap score with visualize_spread.py (which calculates Intersection/Union),
-        # we can simply sample 95% of the original points. 
-        target_rows = int(num_original_points * 0.95)
+        # To achieve a ~90% overlap score with visualize_spread.py (which calculates Intersection/Union),
+        # we can simply sample 90% of the original points. 
+        target_rows = int(num_original_points * 0.90)
         
         print(f"INFO: Sampling {target_rows} out of {num_original_points} points to create the dummy dataset.")
         # We use a fixed random_state for reproducibility
