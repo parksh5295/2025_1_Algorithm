@@ -2,6 +2,7 @@ import argparse
 import os
 import pandas as pd
 from utiles.estimate_time import add_datetime_column
+import numpy as np
 
 
 def get_simgraph_path(data_number):
@@ -47,6 +48,11 @@ def main():
         else:
             print("[ERROR] No 'date' or ('acq_date'+'acq_time') columns found in simgraph data.")
             return
+
+    # 2-1. 환경변수 컬럼 더미로 추가 (원본 enrich 데이터와 동일한 컬럼명)
+    for col in ['elevation', 'ndvi', 'wind_speed', 'wind_direction', 'temperature', 'humidity']:
+        if col not in df.columns:
+            df[col] = 0  # 또는 np.nan
 
     # 3. Time grouping (in 15-minute increments)
     df['date_10min'] = pd.to_datetime(df['date']).dt.floor('15T')
