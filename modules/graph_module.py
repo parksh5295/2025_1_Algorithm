@@ -4,6 +4,8 @@ import shutil
 # Re-enable parallel processing import
 import concurrent.futures 
 import time
+import imageio
+from tqdm import tqdm
 
 # Re-add imports here to ensure they are available in the thread's scope
 from graph.build_graph import cluster_and_build_graph
@@ -51,162 +53,144 @@ def _process_single_date(args):
 
 # Main module functions (currently sequential processing)
 # Add max_workers parameter back for potential future parallel use
-def graph_module(df, filenumber, latlon_bounds=None, max_workers=None):
+def graph_module(df, data_number, latlon_bounds=None):
     """
-    Process the given DataFrame, generate snapshots for each 30-minute interval in parallel, 
-    and then create a GIF.
+    Generates a GIF animation of fire spread.
+    Now supports two modes:
+    1. Standard time-based animation (if 'comparison_type' column is absent).
+    2. Comparison animation (if 'comparison_type' column is present).
     """
-    print(f"\n--- Starting Parallel Graph Processing for dataset filenumber: {filenumber} ---")
-    start_time = time.time()
+    # Check if we are in comparison mode
+    is_comparison_mode = 'comparison_type' in df.columns
 
-    # Prepare date column conversion and grouping
-    try:
-        df['date'] = pd.to_datetime(df['date'])
-    except KeyError:
-        print("[ERROR] 'date' column not found.")
-        return
-    except Exception as e:
-        print(f"[ERROR] Failed converting 'date' column: {e}")
-        return
-
-    # Group by 10-minute intervals (changed from 30T)
-    df['date_10min'] = df['date'].dt.floor('15T')
-    interval_groups = list(df.groupby('date_10min'))
-    total_intervals = len(interval_groups)
-    print(f"Found {total_intervals} unique 15-min intervals to process.")
-
-    if total_intervals == 0:
-        print("No data to process.")
-        return
-
-    # Prepare cumulative DataFrame
-    cumulative_df = pd.DataFrame(columns=df.columns)
-    tasks = []
-    for i, (interval, interval_df) in enumerate(interval_groups):
-        sequence_id = i + 1
-        cumulative_df = pd.concat([cumulative_df, interval_df], ignore_index=True)
-        # Use accumulated data to create snapshots
-        tasks.append((interval, cumulative_df.copy(), filenumber, sequence_id, latlon_bounds))
-
-    successful_snapshots = 0
-    print(f"\nStarting sequential snapshot generation for 10-min intervals...")
-    snapshot_start_time = time.time()
+    # --- Directory and Path Setup ---
+    current_script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_script_dir)
+    gif_dir = os.path.join(project_root, 'data', 'graph', 'gif')
+    frame_dir_base = os.path.join(project_root, 'data', 'graph', 'frame')
     
-    # Initializing a Stacked Graph Object (Outside of a Loop)
-    import networkx as nx
-    G_cumu = nx.DiGraph()
-    # # Store nodes from the previous snapshot to identify new nodes and existing nodes
-    # # previous_nodes_set = set() # Initialize an empty set for the very first snapshot. Deferred for now.
-    # # Declare a cumulative edge/node set -> Remove
-    # cumulative_edges = set()
-    # cumulative_nodes = set()
+    os.makedirs(gif_dir, exist_ok=True)
 
-    for t_idx, t in enumerate(tasks): # Enumerate to access task index
-        interval, cumu_df, filenumber, sequence_id, current_latlon_bounds = t # Renamed for clarity
-        try:
-            _processed_df, nodes_df, G = cluster_and_build_graph(cumu_df.copy()) # Get nodes_df as well
+    # --- Data Preparation ---
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values(by='date')
 
-            # --- START: New logic to connect isolated nodes ---
-            if G.number_of_nodes() > 1: # Only proceed if there's more than one node
-                isolated_nodes = [node for node in G.nodes() if G.degree(node) == 0]
-                
-                # Ensure nodes_df is not empty and has the required columns
-                if not nodes_df.empty and all(col in nodes_df.columns for col in ['cluster_id', 'center_longitude', 'center_latitude']):
-                    # Create a dictionary for node positions from nodes_df for distance calculation
-                    # Filter nodes_df to only include nodes present in the current graph G
-                    relevant_nodes_df = nodes_df[nodes_df['cluster_id'].isin(G.nodes())]
-                    node_positions = {
-                        row['cluster_id']: (row['center_longitude'], row['center_latitude'])
-                        for index, row in relevant_nodes_df.iterrows()
-                    }
-
-                    if isolated_nodes and len(G.nodes()) > len(isolated_nodes): # Only if there are non-isolated nodes to connect to
-                        non_isolated_nodes = [node for node in G.nodes() if G.degree(node) > 0]
-                        
-                        for isolated_node_id in isolated_nodes:
-                            if isolated_node_id not in node_positions:
-                                print(f"[WARN] Position for isolated node {isolated_node_id} not found in node_positions dict. Skipping connection for this node in sequence {sequence_id}.")
-                                continue
-
-                            iso_pos = node_positions[isolated_node_id]
-                            min_dist_sq = float('inf')
-                            closest_neighbor_id = None
-
-                            for neighbor_node_id in non_isolated_nodes:
-                                if neighbor_node_id not in node_positions or neighbor_node_id == isolated_node_id:
-                                    # This might happen if a non-isolated node in G is not in nodes_df (should not ideally occur)
-                                    # or trying to connect to self (which is already handled by G.degree(node) > 0 for non_isolated_nodes)
-                                    continue
-                                
-                                neigh_pos = node_positions[neighbor_node_id]
-                                # Simple Euclidean distance (squared, for comparison)
-                                # For geographic data, Haversine distance would be more accurate, but this is for visual linking.
-                                dist_sq = (iso_pos[0] - neigh_pos[0])**2 + (iso_pos[1] - neigh_pos[1])**2 
-                                
-                                if dist_sq < min_dist_sq:
-                                    min_dist_sq = dist_sq
-                                    closest_neighbor_id = neighbor_node_id
-                            
-                            if closest_neighbor_id is not None:
-                                # Connect isolated nodes first in the current snapshot's G
-                                G.add_edge(isolated_node_id, closest_neighbor_id, type='inferred_connection', weight=0.1) 
-                                print(f"[INFO] Added inferred edge between isolated {isolated_node_id} and {closest_neighbor_id} (dist_sq: {min_dist_sq:.4f}) for sequence {sequence_id}")
-                            else:
-                                print(f"[INFO] No non-isolated neighbor found to connect isolated node {isolated_node_id} in sequence {sequence_id}")
-                    # else:
-                        # if isolated_nodes:
-                            # print(f"[INFO] All nodes are isolated in sequence {sequence_id}, no connections to make.")
-                # else:
-                    # if not nodes_df.empty:
-                         # print(f"[WARN] nodes_df is missing required columns ('cluster_id', 'center_longitude', 'center_latitude') for sequence {sequence_id}. Skipping node connection logic.")
-                    # else:
-                        # print(f"[INFO] nodes_df is empty for sequence {sequence_id}. Skipping node connection logic.")
-            # --- END: New logic to connect isolated nodes ---
-
-            # === Update the cumulative graph ===
-            # Add/update the edges and nodes of the current G to the cumulative graph G_cumu
-            G_cumu.add_nodes_from(G.nodes(data=True))
-            G_cumu.add_edges_from(G.edges(data=True))
-
-            # Create a snapshot from the cumulative graph G_cumu
-            # Pass current_latlon_bounds to draw_graph_snapshot
-            draw_graph_snapshot(G_cumu, filenumber, sequence_id, latlon_bounds=current_latlon_bounds)
-            print(f"   Snapshot saved for sequence {sequence_id}")
-            successful_snapshots += 1
-        except Exception as e:
-            print(f"[ERROR] Failed processing interval {interval}, sequence {sequence_id}: {e}")
-            # Print detailed error information when an error occurs
-            import traceback
-            print(traceback.format_exc())
-    snapshot_end_time = time.time()
-    print(f"Finished snapshot generation in {snapshot_end_time - snapshot_start_time:.2f} seconds.")
-    print(f"Successfully generated {successful_snapshots} out of {total_intervals} snapshots.")
-
-    # GIF generation (after all snapshots are saved)
-    if successful_snapshots > 0:
-        print(f"\nGenerating GIF for dataset {filenumber}...")
-        gif_start_time = time.time()
-        try:
-            # Determine project root and the target base directory for frames/GIFs
-            current_script_dir = os.path.dirname(os.path.abspath(__file__)) # .../code/modules
-            code_dir = os.path.dirname(current_script_dir) # .../code
-            project_root = os.path.dirname(code_dir) # .../
-            
-            # frame_base_dir should now point to project_root/data/graph
-            # This is where gen_gif.py will look for a 'frame' subfolder 
-            # and create a 'gif' subfolder.
-            gif_frames_base_dir = os.path.join(project_root, 'data', 'graph')
-
-            generate_gif_for_dataset(filenumber=filenumber, frame_base_dir=gif_frames_base_dir)
-            gif_end_time = time.time()
-            print(f"GIF generation complete in {gif_end_time - gif_start_time:.2f} seconds.")
-        except Exception as e:
-            print(f"[ERROR] Failed to generate GIF for dataset {filenumber}: {e}")
+    if is_comparison_mode:
+        print("--- Running Graph Module in COMPARISON mode ---")
+        output_filename_base = f"comparison_{data_number}"
+        # In comparison mode, all points are plotted in a single frame.
+        # We create a dummy 'time_group' to fit the loop structure.
+        df['time_group'] = 0 
+        time_groups = [df['date'].min()] # A single group for one frame
     else:
-        print(f"No successful snapshots were generated for dataset {filenumber}, skipping GIF creation.")
+        print("--- Running Graph Module in STANDARD (time-series) mode ---")
+        output_filename_base = f"animation_{data_number}"
+        df['time_group'] = df['date'].dt.floor('1H')
+        time_groups = sorted(df['time_group'].unique())
 
-    end_time = time.time()
-    print(f"\n--- Finished Parallel Graph Processing for dataset {filenumber} in {end_time - start_time:.2f} seconds ---")
+    frame_dir = os.path.join(frame_dir_base, output_filename_base)
+    os.makedirs(frame_dir, exist_ok=True)
+    
+    # --- Map Boundary Calculation ---
+    if latlon_bounds:
+        lat_min, lat_max, lon_min, lon_max = latlon_bounds
+    else:
+        # Fallback if no bounds are provided
+        lat_min, lat_max = df['latitude'].min(), df['latitude'].max()
+        lon_min, lon_max = df['longitude'].min(), df['longitude'].max()
+        margin = 0.1
+        lat_margin = (lat_max - lat_min) * margin
+        lon_margin = (lon_max - lon_min) * margin
+        lat_min, lat_max = lat_min - lat_margin, lat_max + lat_margin
+        lon_min, lon_max = lon_min - lon_margin, lon_max + lon_margin
+
+    # --- Frame Generation ---
+    frames = []
+    print(f"Generating {len(time_groups)} frame(s) for '{output_filename_base}.gif'...")
+
+    cumulative_df = pd.DataFrame()
+
+    for i, time_group in enumerate(tqdm(time_groups, desc="Processing Frames")):
+        if is_comparison_mode:
+            # For comparison, plot all points at once
+            frame_df = df
+        else:
+            # For standard animation, accumulate points over time
+            group_df = df[df['time_group'] == time_group]
+            cumulative_df = pd.concat([cumulative_df, group_df]).drop_duplicates(subset=['latitude', 'longitude'])
+            frame_df = cumulative_df
+
+        fig = go.Figure()
+
+        # Add fire points
+        if is_comparison_mode:
+            # Color points based on their comparison type
+            colors = {
+                'Overlap': 'purple',
+                'Actual Only': 'red',
+                'Predicted Only': 'blue'
+            }
+            for point_type, color in colors.items():
+                plot_df = frame_df[frame_df['comparison_type'] == point_type]
+                if not plot_df.empty:
+                    fig.add_trace(go.Scattermapbox(
+                        lat=plot_df['latitude'],
+                        lon=plot_df['longitude'],
+                        mode='markers',
+                        marker=go.scattermapbox.Marker(
+                            size=8,
+                            color=color,
+                            opacity=0.7
+                        ),
+                        name=point_type,
+                        hoverinfo='text',
+                        text=[f"Type: {ptype}<br>Lat: {lat:.4f}<br>Lon: {lon:.4f}" for ptype, lat, lon in zip(plot_df['comparison_type'], plot_df['latitude'], plot_df['longitude'])]
+                    ))
+        else:
+            # Standard time-series coloring
+            fig.add_trace(go.Scattermapbox(
+                lat=frame_df['latitude'],
+                lon=frame_df['longitude'],
+                mode='markers',
+                marker=go.scattermapbox.Marker(
+                    size=9,
+                    color=frame_df['confidence'].map({'h': 'red', 'n': 'orange'}).fillna('gray'),
+                    opacity=0.8
+                ),
+                hoverinfo='none'
+            ))
+
+        # Configure map layout
+        fig.update_layout(
+            mapbox_style="carto-darkmatter",
+            mapbox_center_lat= (lat_max + lat_min) / 2,
+            mapbox_center_lon= (lon_max + lon_min) / 2,
+            mapbox_zoom=8,
+            mapbox_bounds={"west": lon_min, "east": lon_max, "south": lat_min, "north": lat_max},
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            showlegend=is_comparison_mode # Show legend only for comparison GIFs
+        )
+
+        frame_path = os.path.join(frame_dir, f"frame_{i:04d}.png")
+        fig.write_image(frame_path, width=800, height=700)
+        frames.append(frame_path)
+
+    # --- GIF Creation ---
+    gif_path = os.path.join(gif_dir, f"{output_filename_base}.gif")
+    print(f"Creating GIF at {gif_path}...")
+    with imageio.get_writer(gif_path, mode='I', duration=500 if is_comparison_mode else 250, loop=0 if is_comparison_mode else 1) as writer:
+        for frame_path in tqdm(frames, desc="Assembling GIF"):
+            image = imageio.imread(frame_path)
+            writer.append_data(image)
+
+    # --- Cleanup ---
+    print("Cleaning up temporary frame files...")
+    for frame_path in frames:
+        os.remove(frame_path)
+    if not os.listdir(frame_dir):
+        os.rmdir(frame_dir)
+
+    print(f"✅ GIF generation complete: {gif_path}")
 
 # --- Example calling method (for reference) ---
 # if __name__ == '__main__':
