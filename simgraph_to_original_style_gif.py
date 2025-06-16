@@ -12,7 +12,9 @@ print("--- End Runtime Environment Check ---\n")
 
 from data_use.data_path import get_prediction_paths
 from utiles.estimate_time import estimate_fire_spread_times, add_datetime_column
-from modules.graph_module import graph_module
+from graph.build_graph import cluster_and_build_graph
+from graph.snapshot import draw_graph_snapshot
+from utiles.gen_gif import generate_gif_for_dataset
 
 def main():
     # 0. argparser
@@ -81,12 +83,50 @@ def main():
     
     latlon_bounds = (lat_min, lat_max, lon_min, lon_max)
 
-    # 8. Call graph module (clearly distinguish file names)
-    gif_identifier = f"simgraph_original_{args.data_number}"
-    graph_module(df, gif_identifier, latlon_bounds=latlon_bounds)
+    # 8. Graph creation (NetworkX/Matplotlib)
+    print("--- Using original NetworkX/Matplotlib style graph generation ---")
+    
+    # Time grouping (15-minute increments)
+    df['date_10min'] = pd.to_datetime(df['date']).dt.floor('15T')
+    interval_groups = list(df.groupby('date_10min'))
+    total_intervals = len(interval_groups)
+    print(f"Found {total_intervals} unique 15-min intervals to process.")
+    if total_intervals == 0:
+        print("No data to process.")
+        return
+
+    # File identifier
+    filenumber = f"simgraph_original_{args.data_number}"
+    
+    # Create frame directory
+    current_script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_script_dir)
+    frame_base_dir = os.path.join(project_root, 'data', 'graph')
+    os.makedirs(os.path.join(frame_base_dir, 'frame', f"frame_{filenumber}"), exist_ok=True)
+
+    # Create cumulative frames
+    cumulative_df = pd.DataFrame(columns=df.columns)
+    for i, (interval, interval_df) in enumerate(interval_groups):
+        sequence_id = i + 1
+        cumulative_df = pd.concat([cumulative_df, interval_df], ignore_index=True)
+        
+        # Create graph and snapshot (original style)
+        _processed_df, nodes_df, G = cluster_and_build_graph(cumulative_df.copy())
+        draw_graph_snapshot(G, filenumber, sequence_id, latlon_bounds=latlon_bounds)
+        print(f"   Snapshot saved for sequence {sequence_id}")
+
+    # Create GIF (original style)
+    print(f"Generating GIF for {filenumber}...")
+    generate_gif_for_dataset(
+        filenumber=filenumber,
+        frame_base_dir=frame_base_dir,
+        output_gif_name=f"{filenumber}.gif",
+        duration=0.25,
+        frame_image_pattern='*.png'
+    )
     
     print(f"--- Simgraph original style GIF created successfully ---")
-    print(f"--- Output file: animation_{gif_identifier}.gif ---")
+    print(f"--- Output file: {filenumber}.gif ---")
 
 if __name__ == '__main__':
     main() 
