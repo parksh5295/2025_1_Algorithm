@@ -49,10 +49,10 @@ def main():
             print("[ERROR] No 'date' or ('acq_date'+'acq_time') columns found in simgraph data.")
             return
 
-    # 2-1. 환경변수 컬럼 더미로 추가 (원본 enrich 데이터와 동일한 컬럼명)
+    # 2-1. Add dummy environmental columns (same column names as the original enrich data)
     for col in ['elevation', 'ndvi', 'wind_speed', 'wind_direction', 'temperature', 'humidity']:
         if col not in df.columns:
-            df[col] = 0  # 또는 np.nan
+            df[col] = 0  # or np.nan
 
     # 3. Time grouping (in 15-minute increments)
     df['date_10min'] = pd.to_datetime(df['date']).dt.floor('15T')
@@ -67,19 +67,20 @@ def main():
     from graph.build_graph import cluster_and_build_graph
     from graph.snapshot import draw_graph_snapshot
     from utiles.gen_gif import generate_gif_for_dataset
-    cumulative_df = pd.DataFrame(columns=df.columns)
+    cum_df = pd.DataFrame(columns=df.columns)
+    filenumber_str = f"simsub_{args.data_number}"
     for i, (interval, interval_df) in enumerate(interval_groups):
         sequence_id = i + 1
-        cumulative_df = pd.concat([cumulative_df, interval_df], ignore_index=True)
-        _processed_df, nodes_df, G = cluster_and_build_graph(cumulative_df.copy())
-        draw_graph_snapshot(G, f"similar_sub_{args.data_number}", sequence_id)
+        cum_df = pd.concat([cum_df, interval_df], ignore_index=True)
+        _processed_df, nodes_df, G = cluster_and_build_graph(cum_df.copy())
+        draw_graph_snapshot(G, filenumber_str, sequence_id)
         print(f"   Snapshot saved for sequence {sequence_id}")
 
     # 5. Create GIF
     print(f"Generating GIF for similar_sub_animation_{args.data_number}...")
     graph_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'graph')
     generate_gif_for_dataset(
-        filenumber=f"similar_sub_{args.data_number}",
+        filenumber=filenumber_str,
         frame_base_dir=graph_dir,
         output_gif_name=f"similar_sub_animation_{args.data_number}.gif",
         duration=0.25,
