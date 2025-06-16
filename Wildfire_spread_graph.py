@@ -17,7 +17,7 @@ import argparse
 
 from data_use.data_path import load_data_path, get_prediction_paths
 from modules.data_load import load_and_enrich_data
-from utiles.estimate_time import estimate_fire_spread_times
+from utiles.estimate_time import estimate_fire_spread_times, add_datetime_column
 from modules.graph_module import graph_module
 # Import the prediction workflow to run it if needed
 from Wildfire_predict import main_prediction_workflow
