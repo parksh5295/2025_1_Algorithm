@@ -38,33 +38,34 @@ def build_fire_graph(nodes_df, max_distance_km=10):
         # check if there is an incoming edge to the current node
         has_incoming_edge = any(G.has_edge(prev_node, current_node) for prev_node in sorted_nodes[:i])
         
-        # if there is no incoming edge, connect to the nearest previous node
+        # if there is no incoming edge, connect to the nearest 5 previous nodes
         if not has_incoming_edge:
-            print(f"[EDGE_DEBUG] No connections found for node {current_node}, connecting to nearest previous node")
+            print(f"[EDGE_DEBUG] No connections found for node {current_node}, connecting to nearest 5 previous nodes")
             
             current_attrs = G.nodes[current_node]
             previous_nodes = sorted_nodes[:i]  # all nodes before the current node
             
-            # find the nearest previous node
-            min_dist = float('inf')
-            nearest_node = None
-            
+            # calculate distances to all previous nodes
+            node_distances = []
             for prev_node in previous_nodes:
                 prev_attrs = G.nodes[prev_node]
                 dist = geodesic((prev_attrs['center_latitude'], prev_attrs['center_longitude']),
                                 (current_attrs['center_latitude'], current_attrs['center_longitude'])).km
-                
-                if dist < min_dist:
-                    min_dist = dist
-                    nearest_node = prev_node
+                node_distances.append((prev_node, dist))
             
-            # connect to the nearest node
-            if nearest_node is not None:
+            # sort by distance and select nearest 5
+            node_distances.sort(key=lambda x: x[1])
+            nearest_5_nodes = node_distances[:min(5, len(node_distances))]
+            
+            # connect to the nearest 5 nodes
+            for nearest_node, min_dist in nearest_5_nodes:
                 elev_prev = G.nodes[nearest_node].get('avg_elevation', 0)
                 elev_curr = current_attrs.get('avg_elevation', 0)
                 elev_diff = elev_curr - elev_prev
                 weight = min_dist + max(0, -elev_diff) * 0.1
                 G.add_edge(nearest_node, current_node, weight=weight)
-                print(f"[EDGE_DEBUG] Connected node {current_node} to nearest node {nearest_node} (distance: {min_dist:.2f}km)")
+                print(f"[EDGE_DEBUG] Connected node {current_node} to node {nearest_node} (distance: {min_dist:.2f}km)")
+            
+            print(f"[EDGE_DEBUG] Total {len(nearest_5_nodes)} mandatory connections created for node {current_node}")
     
     return G
