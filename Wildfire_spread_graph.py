@@ -126,7 +126,7 @@ def main():
     parser = argparse.ArgumentParser(description='Wildfire Spread Graph Generator & Predictor')
 
     # --- Mode Selection ---
-    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction', 'similar', 'simgraph_animation'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize, 'similar' to generate a dummy prediction, 'simgraph_animation' to create a time-series GIF from simgraph data.")
+    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction', 'similar', 'simgraph_animation', 'similar_sub_animation'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize, 'similar' to generate a dummy prediction, 'simgraph_animation' to create a time-series GIF from simgraph data, 'similar_sub_animation' to create a matplotlib/networkx style GIF from simgraph data.")
     
     # --- Universal Arguments ---
     parser.add_argument('--data_number', type=int, required=True, help="The data number to process for any mode.")
@@ -367,6 +367,75 @@ def main():
         gif_name = f"simgraph_animation_{args.data_number}"
         graph_module(df, gif_name, latlon_bounds=latlon_bounds)
         print(f"--- Simgraph animation GIF created as '{gif_name}.gif' ---")
+        return
+
+    elif args.run_mode == 'similar_sub_animation':
+        print(f"--- Running in Similar Sub Animation Mode for data_number: {args.data_number} ---")
+        try:
+            paths = get_prediction_paths(args.data_number)
+            predicted_path_orig = paths['predicted']
+            simgraph_path = predicted_path_orig.parent / f"simgraph_{predicted_path_orig.name}"
+        except (ValueError, FileNotFoundError) as e:
+            print(f"[ERROR] Could not retrieve paths: {e}")
+            return
+
+        if not os.path.exists(simgraph_path):
+            print(f"[ERROR] Simgraph data file not found at {simgraph_path}.")
+            print("Please run '--run_mode similar' first to generate it.")
+            return
+
+        print(f"INFO: Loading simgraph data from {simgraph_path}...")
+        df = pd.read_csv(simgraph_path)
+
+        # Ensure 'date' column exists
+        if 'date' not in df.columns:
+            if 'acq_date' in df.columns and 'acq_time' in df.columns:
+                df = add_datetime_column(df, 'acq_date', 'acq_time')
+            else:
+                print("[ERROR] No 'date' or ('acq_date'+'acq_time') columns found in simgraph data.")
+                return
+
+        # Add dummy confidence if it doesn't exist
+        if 'confidence' not in df.columns:
+            df['confidence'] = 'h'
+
+        # --- 원본 방식 프레임 생성 및 GIF 저장 ---
+        # 1. 시간순 누적 프레임 생성 (networkx/matplotlib 기반)
+        from graph.build_graph import cluster_and_build_graph
+        from graph.snapshot import draw_graph_snapshot
+        from utiles.gen_gif import generate_gif_for_dataset
+        import numpy as np
+
+        # 2. 시간 그룹핑 (15분 단위)
+        df['date_10min'] = pd.to_datetime(df['date']).dt.floor('15T')
+        interval_groups = list(df.groupby('date_10min'))
+        total_intervals = len(interval_groups)
+        print(f"Found {total_intervals} unique 15-min intervals to process.")
+        if total_intervals == 0:
+            print("No data to process.")
+            return
+
+        # 3. 누적 프레임 생성
+        cumulative_df = pd.DataFrame(columns=df.columns)
+        for i, (interval, interval_df) in enumerate(interval_groups):
+            sequence_id = i + 1
+            cumulative_df = pd.concat([cumulative_df, interval_df], ignore_index=True)
+            # 그래프 및 스냅샷 생성
+            _processed_df, nodes_df, G = cluster_and_build_graph(cumulative_df.copy())
+            draw_graph_snapshot(G, f"similar_sub_{args.data_number}", sequence_id)
+            print(f"   Snapshot saved for sequence {sequence_id}")
+
+        # 4. GIF 생성
+        from utiles.gen_gif import generate_gif_for_dataset
+        print(f"Generating GIF for similar_sub_animation_{args.data_number}...")
+        generate_gif_for_dataset(
+            filenumber=f"similar_sub_{args.data_number}",
+            frame_base_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data/graph'),
+            output_gif_name=f"similar_sub_animation_{args.data_number}.gif",
+            duration=0.25,
+            frame_image_pattern='*.png'
+        )
+        print(f"--- Similar sub animation GIF created as 'similar_sub_animation_{args.data_number}.gif' ---")
         return
 
     # --- Original Mode Execution ---
