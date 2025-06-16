@@ -126,7 +126,7 @@ def main():
     parser = argparse.ArgumentParser(description='Wildfire Spread Graph Generator & Predictor')
 
     # --- Mode Selection ---
-    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize.")
+    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction', 'similar'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize, 'similar' to generate a dummy prediction with high similarity.")
     
     # --- Universal Arguments ---
     parser.add_argument('--data_number', type=int, required=True, help="The data number to process for any mode.")
@@ -278,6 +278,56 @@ def main():
         else:
             print(f"INFO: GIF already exists at {gif_path}. Use --regenerate-graph to re-create it.")
         return
+
+    elif args.run_mode == 'similar':
+        print(f"--- Running in Similar Graph Generation Mode for data_number: {args.data_number} ---")
+        print("INFO: This mode generates a dummy prediction file with ~95% similarity to the original data.")
+        
+        try:
+            paths = get_prediction_paths(args.data_number)
+            original_nodes_path = paths['all_nodes']
+            # Get the original prediction path to derive the new path
+            predicted_path = paths['predicted'] 
+            
+            # Construct the new filename
+            output_dir = predicted_path.parent
+            output_filename = f"simgraph_{predicted_path.name}"
+            output_path = output_dir / output_filename
+
+        except (ValueError, FileNotFoundError) as e:
+            print(f"[ERROR] Could not retrieve paths: {e}")
+            return
+
+        if not os.path.exists(original_nodes_path):
+            print(f"[ERROR] Original data file not found at {original_nodes_path}. Cannot generate similar data.")
+            return
+
+        print(f"INFO: Loading original data from {original_nodes_path}...")
+        original_df = pd.read_csv(original_nodes_path)
+        
+        num_original_points = len(original_df)
+        if num_original_points == 0:
+            print("[ERROR] Original data file is empty.")
+            return
+            
+        # To achieve a ~95% overlap score with visualize_spread.py (which calculates Intersection/Union),
+        # we can simply sample 95% of the original points. 
+        target_rows = int(num_original_points * 0.95)
+        
+        print(f"INFO: Sampling {target_rows} out of {num_original_points} points to create the dummy dataset.")
+        # We use a fixed random_state for reproducibility
+        similar_df = original_df.sample(n=target_rows, random_state=42)
+
+        # The visualize_spread.py script primarily needs 'latitude' and 'longitude' columns.
+        print(f"INFO: Saving the generated 'similar' data to: {output_path}")
+        similar_df.to_csv(output_path, index=False)
+        
+        print("\n--- Action Required ---")
+        print(f"SUCCESS: A dummy prediction file named '{output_filename}' has been generated.")
+        print("You can now analyze this file's 'accuracy' using the visualize_spread.py script with the '--use_simgraph' flag:")
+        print(f"  python visualize_spread.py --data_number {args.data_number} --use_simgraph")
+        return
+
 
     # --- Original Mode Execution ---
     print(f"--- Running in Original Mode for data_number: {args.data_number} ---")

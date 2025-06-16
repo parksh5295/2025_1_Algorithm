@@ -6,7 +6,7 @@ from pathlib import Path
 # Assuming data_path.py is in data_use directory
 from data_use.data_path import get_prediction_paths
 
-def visualize_and_compare(data_number: int):
+def visualize_and_compare(data_number: int, use_simgraph: bool = False):
     """
     Generates a map visualizing the difference between actual and predicted wildfire spread
     and calculates the overlap percentage.
@@ -17,7 +17,15 @@ def visualize_and_compare(data_number: int):
     try:
         paths = get_prediction_paths(data_number)
         actual_path = paths['all_nodes']
-        predicted_path = paths['predicted']
+        
+        if use_simgraph:
+            print("--- Comparing against SIMGRAPH data ---")
+            predicted_path_orig = paths['predicted']
+            predicted_path = predicted_path_orig.parent / f"simgraph_{predicted_path_orig.name}"
+        else:
+            print("--- Comparing against PREDICTION data ---")
+            predicted_path = paths['predicted']
+
     except ValueError as e:
         print(f"[ERROR] {e}. Please use a valid data number.")
         return
@@ -132,5 +140,10 @@ if __name__ == '__main__':
         choices=[1, 2, 3, 4, 5, 6, 7],
         help="The data number to process for visualization."
     )
+    parser.add_argument(
+        '--use_simgraph',
+        action='store_true',
+        help="If specified, compares the actual data against the 'simgraph' dummy data instead of the real prediction."
+    )
     args = parser.parse_args()
-    visualize_and_compare(args.data_number) 
+    visualize_and_compare(args.data_number, args.use_simgraph) 
