@@ -1,47 +1,53 @@
-import argparse
+import sys
 import os
 import pandas as pd
-from utiles.estimate_time import add_datetime_column
-import numpy as np
+import argparse
 
+print("--- Runtime Environment Check ---")
+print(f"Python Executable: {sys.executable}")
+print("System Path (sys.path):")
+for path in sys.path:
+    print(f"  - {path}")
+print("--- End Runtime Environment Check ---\n")
 
-def get_simgraph_path(data_number):
-    base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-    if data_number == 1:
-        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608350(250314-05)', 'simgraph_similar_fire_nrt_SV-C2_608350.csv')
-    elif data_number == 2:
-        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608316(230402-12)', 'simgraph_similar_fire_archive_SV-C2_608316.csv')
-    elif data_number == 3:
-        return os.path.join(base_dir, 'DL_FIRE_J2V-C2_37482(2025-California)', 'simgraph_similar_fire_nrt_J2V-C2_37482.csv')
-    elif data_number == 4:
-        return os.path.join(base_dir, 'DL_FIRE_SV-C2_37483(2019-Australia)', 'simgraph_similar_fire_archive_SV-C2_37483.csv')
-    elif data_number == 5:
-        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608318(220528-03)', 'simgraph_similar_fire_archive_SV-C2_608318.csv')
-    elif data_number == 6:
-        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608319(220405-12)', 'simgraph_similar_fire_archive_SV-C2_608319.csv')
-    elif data_number == 7:
-        return os.path.join(base_dir, 'DL_FIRE_SV-C2_608320(220304-14)', 'simgraph_similar_fire_archive_SV-C2_608320.csv')
-    else:
-        raise ValueError("Invalid data number")
+from data_use.data_path import get_prediction_paths
+from utiles.estimate_time import estimate_fire_spread_times, add_datetime_column
+from modules.graph_module import graph_module
 
 def main():
-    parser = argparse.ArgumentParser(description="Create a networkx/matplotlib style wildfire spread GIF from simgraph data (no API enrich, 원본 스타일)")
-    parser.add_argument('--data_number', type=int, required=True, help="The data number to process (e.g., 1, 2, 3)")
+    # 0. argparser
+    parser = argparse.ArgumentParser(description='Simgraph to Original Style GIF Generator')
+    parser.add_argument('--data_number', type=int, required=True, help="The data number to process.")
     args = parser.parse_args()
 
-    # 1. Find the path to the simgraph file (data/ full recursive navigation)
-    try:
-        simgraph_path = get_simgraph_path(args.data_number)
-    except Exception as e:
-        print(f"[ERROR] {e}")
-        return
-    if not os.path.exists(simgraph_path):
-        print(f"[ERROR] {simgraph_path} File not found.")
-        return
-    print(f"[INFO] Loading simgraph data from {simgraph_path}")
+    print(f"--- Running Simgraph to Original Style GIF for data_number: {args.data_number} ---")
 
-    # 2. Importing data
+    # 1. Get simgraph file path
+    try:
+        paths = get_prediction_paths(args.data_number)
+        predicted_path_orig = paths['predicted']
+        simgraph_path = predicted_path_orig.parent / f"simgraph_{predicted_path_orig.name}"
+    except (ValueError, FileNotFoundError) as e:
+        print(f"[ERROR] Could not retrieve paths: {e}")
+        return
+
+    if not os.path.exists(simgraph_path):
+        print(f"[ERROR] Simgraph data file not found at {simgraph_path}.")
+        print("Please run '--run_mode similar' first to generate it.")
+        return
+
+    # 2. Load simgraph data
+    print(f"[INFO] Loading simgraph data from: {simgraph_path}")
     df = pd.read_csv(simgraph_path)
+
+    # 3. Add dummy environmental columns
+    env_columns = ['elevation', 'ndvi', 'wind_speed', 'wind_direction', 'temperature', 
+                   'humidity', 'precipitation', 'soil_moisture', 'vegetation_density']
+    for col in env_columns:
+        if col not in df.columns:
+            df[col] = 0
+
+    # 4. Add date column
     if 'date' not in df.columns:
         if 'acq_date' in df.columns and 'acq_time' in df.columns:
             df = add_datetime_column(df, 'acq_date', 'acq_time')
@@ -49,49 +55,38 @@ def main():
             print("[ERROR] No 'date' or ('acq_date'+'acq_time') columns found in simgraph data.")
             return
 
-    # 2-1. Add dummy environmental columns (same column names as the original enrich data)
-    for col in ['elevation', 'ndvi', 'wind_speed', 'wind_direction', 'temperature', 'humidity']:
-        if col not in df.columns:
-            df[col] = 0  # or np.nan
+    # 5. Filter confidence column
+    if 'confidence' not in df.columns:
+        df['confidence'] = 'h'
+    df = df[df['confidence'].isin(['h', 'n'])]
 
-    # 3. Time grouping (in 15-minute increments)
-    df['date_10min'] = pd.to_datetime(df['date']).dt.floor('15T')
-    interval_groups = list(df.groupby('date_10min'))
-    total_intervals = len(interval_groups)
-    print(f"Found {total_intervals} unique 15-min intervals to process.")
-    if total_intervals == 0:
-        print("No data to process.")
-        return
+    # 6. Estimate fire spread times
+    df = estimate_fire_spread_times(df)
+    
+    # 7. Calculate map bounds
+    lat_min_orig, lat_max_orig = df['latitude'].min(), df['latitude'].max()
+    lon_min_orig, lon_max_orig = df['longitude'].min(), df['longitude'].max()
+    
+    # Calculate margin (e.g., 10% of the range)
+    lat_range = lat_max_orig - lat_min_orig
+    lon_range = lon_max_orig - lon_min_orig
+    margin_lat = lat_range * 0.10 # 10% margin
+    margin_lon = lon_range * 0.10 # 10% margin
+    
+    # Apply margin
+    lat_min = lat_min_orig - margin_lat
+    lat_max = lat_max_orig + margin_lat
+    lon_min = lon_min_orig - margin_lon
+    lon_max = lon_max_orig + margin_lon
+    
+    latlon_bounds = (lat_min, lat_max, lon_min, lon_max)
 
-    # 4. Create cumulative frames and include network/edge/map snapshots
-    from graph.build_graph import cluster_and_build_graph
-    from graph.snapshot import draw_graph_snapshot
-    from utiles.gen_gif import generate_gif_for_dataset
-    cumulative_df = pd.DataFrame(columns=df.columns)
-    filenumber_str = f"simsub_{args.data_number}"
+    # 8. Call graph module (clearly distinguish file names)
+    gif_identifier = f"simgraph_original_{args.data_number}"
+    graph_module(df, gif_identifier, latlon_bounds=latlon_bounds)
+    
+    print(f"--- Simgraph original style GIF created successfully ---")
+    print(f"--- Output file: animation_{gif_identifier}.gif ---")
 
-    # Ensure frame directory exists upfront
-    graph_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'graph')
-    frame_dir_path = os.path.join(graph_dir, 'frame', f"frame_{filenumber_str}")
-    os.makedirs(frame_dir_path, exist_ok=True)
-
-    for i, (interval, interval_df) in enumerate(interval_groups):
-        sequence_id = i + 1
-        cumulative_df = pd.concat([cumulative_df, interval_df], ignore_index=True)
-        _processed_df, nodes_df, G = cluster_and_build_graph(cumulative_df.copy())
-        draw_graph_snapshot(G, filenumber_str, sequence_id)
-        print(f"   Snapshot saved for sequence {sequence_id}")
-
-    # 5. Create GIF
-    print(f"Generating GIF for similar_sub_animation_{args.data_number}...")
-    generate_gif_for_dataset(
-        filenumber=filenumber_str,
-        frame_base_dir=graph_dir,
-        output_gif_name=f"similar_sub_animation_{args.data_number}.gif",
-        duration=0.25,
-        frame_image_pattern='*.png'
-    )
-    print(f"--- Similar sub animation GIF created as 'similar_sub_animation_{args.data_number}.gif' ---")
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main() 
