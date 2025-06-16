@@ -2,23 +2,25 @@ import argparse
 import os
 import pandas as pd
 from utiles.estimate_time import add_datetime_column
+import glob
 
 def main():
     parser = argparse.ArgumentParser(description="Create a networkx/matplotlib style wildfire spread GIF from simgraph data (no API enrich, 원본 스타일)")
     parser.add_argument('--data_number', type=int, required=True, help="The data number to process (e.g., 1, 2, 3)")
     args = parser.parse_args()
 
-    # 1. simgraph 파일 경로 찾기
+    # 1. Find the path to the simgraph file (data/ full recursive navigation)
     data_number_str = str(args.data_number).zfill(4)
-    pred_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'prediction')
-    simgraph_candidates = [f for f in os.listdir(pred_dir) if f.startswith('simgraph_') and data_number_str in f]
+    data_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+    pattern = f"simgraph_*{data_number_str}*.csv"
+    simgraph_candidates = glob.glob(os.path.join(data_root, '**', pattern), recursive=True)
     if not simgraph_candidates:
-        print(f"[ERROR] simgraph_predicted_spread_{data_number_str}.csv 파일을 찾을 수 없습니다.")
+        print(f"[ERROR] The file simgraph_*{data_number_str}*.csv was not found.")
         return
-    simgraph_path = os.path.join(pred_dir, simgraph_candidates[0])
+    simgraph_path = simgraph_candidates[0]
     print(f"[INFO] Loading simgraph data from {simgraph_path}")
 
-    # 2. 데이터 불러오기
+    # 2. Importing data
     df = pd.read_csv(simgraph_path)
     if 'date' not in df.columns:
         if 'acq_date' in df.columns and 'acq_time' in df.columns:
@@ -27,7 +29,7 @@ def main():
             print("[ERROR] No 'date' or ('acq_date'+'acq_time') columns found in simgraph data.")
             return
 
-    # 3. 시간 그룹핑 (15분 단위)
+    # 3. Time grouping (in 15-minute increments)
     df['date_10min'] = pd.to_datetime(df['date']).dt.floor('15T')
     interval_groups = list(df.groupby('date_10min'))
     total_intervals = len(interval_groups)
@@ -36,7 +38,7 @@ def main():
         print("No data to process.")
         return
 
-    # 4. 누적 프레임 생성 및 네트워크/엣지/지도 포함 스냅샷
+    # 4. Create cumulative frames and include network/edge/map snapshots
     from graph.build_graph import cluster_and_build_graph
     from graph.snapshot import draw_graph_snapshot
     from utiles.gen_gif import generate_gif_for_dataset
@@ -48,7 +50,7 @@ def main():
         draw_graph_snapshot(G, f"similar_sub_{args.data_number}", sequence_id)
         print(f"   Snapshot saved for sequence {sequence_id}")
 
-    # 5. GIF 생성
+    # 5. Create GIF
     print(f"Generating GIF for similar_sub_animation_{args.data_number}...")
     graph_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'graph')
     generate_gif_for_dataset(
