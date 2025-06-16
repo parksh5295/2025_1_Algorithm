@@ -126,7 +126,7 @@ def main():
     parser = argparse.ArgumentParser(description='Wildfire Spread Graph Generator & Predictor')
 
     # --- Mode Selection ---
-    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction', 'similar'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize, 'similar' to generate a dummy prediction with high similarity.")
+    parser.add_argument('--run_mode', type=str, default="original", choices=['original', 'prediction', 'similar', 'simgraph_animation'], help="Mode to run: 'original' for historical data GIF, 'prediction' to predict and/or visualize, 'similar' to generate a dummy prediction, 'simgraph_animation' to create a time-series GIF from simgraph data.")
     
     # --- Universal Arguments ---
     parser.add_argument('--data_number', type=int, required=True, help="The data number to process for any mode.")
@@ -328,6 +328,46 @@ def main():
         print(f"  python visualize_spread.py --data_number {args.data_number} --use_simgraph")
         return
 
+    elif args.run_mode == 'simgraph_animation':
+        print(f"--- Running in Simgraph Animation Mode for data_number: {args.data_number} ---")
+        try:
+            paths = get_prediction_paths(args.data_number)
+            predicted_path_orig = paths['predicted']
+            simgraph_path = predicted_path_orig.parent / f"simgraph_{predicted_path_orig.name}"
+        except (ValueError, FileNotFoundError) as e:
+            print(f"[ERROR] Could not retrieve paths: {e}")
+            return
+
+        if not os.path.exists(simgraph_path):
+            print(f"[ERROR] Simgraph data file not found at {simgraph_path}.")
+            print("Please run '--run_mode similar' first to generate it.")
+            return
+
+        print(f"INFO: Loading simgraph data from {simgraph_path}...")
+        df = pd.read_csv(simgraph_path)
+        
+        # This data comes from the original dataset, so it should have the necessary columns.
+        # Ensure 'date' column is created for graph_module
+        df = add_datetime_column(df, 'acq_date', 'acq_time')
+
+        # Add dummy confidence if it doesn't exist
+        if 'confidence' not in df.columns:
+            df['confidence'] = 'h'
+
+        # Calculate bounds for the map
+        lat_min, lat_max = df['latitude'].min(), df['latitude'].max()
+        lon_min, lon_max = df['longitude'].min(), df['longitude'].max()
+        margin = 0.10
+        lat_margin = (lat_max - lat_min) * margin
+        lon_margin = (lon_max - lon_min) * margin
+        latlon_bounds = (lat_min - lat_margin, lat_max + lat_margin, lon_min - lon_margin, lon_max + lon_margin)
+
+        # Call graph_module to create the time-series animation
+        # Pass a specific name to distinguish the output GIF
+        gif_name = f"simgraph_animation_{args.data_number}"
+        graph_module(df, gif_name, latlon_bounds=latlon_bounds)
+        print(f"--- Simgraph animation GIF created as '{gif_name}.gif' ---")
+        return
 
     # --- Original Mode Execution ---
     print(f"--- Running in Original Mode for data_number: {args.data_number} ---")
@@ -401,7 +441,7 @@ def main():
     latlon_bounds = (lat_min, lat_max, lon_min, lon_max)
 
     # 2. Forming a graph
-    graph_module(df, args.data_number, latlon_bounds=latlon_bounds)
+    graph_module(df, f"animation_{args.data_number}", latlon_bounds=latlon_bounds)
     
 
 
