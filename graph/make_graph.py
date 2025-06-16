@@ -1,5 +1,6 @@
 import networkx as nx
 import numpy as np
+import random
 from geopy.distance import geodesic
 
 
@@ -38,10 +39,8 @@ def build_fire_graph(nodes_df, max_distance_km=10):
         # check if there is an incoming edge to the current node
         has_incoming_edge = any(G.has_edge(prev_node, current_node) for prev_node in sorted_nodes[:i])
         
-        # if there is no incoming edge, connect to the nearest 5 previous nodes
+        # if there is no incoming edge, connect to 1~5 random previous nodes
         if not has_incoming_edge:
-            print(f"[EDGE_DEBUG] No connections found for node {current_node}, connecting to nearest 5 previous nodes")
-            
             current_attrs = G.nodes[current_node]
             previous_nodes = sorted_nodes[:i]  # all nodes before the current node
             
@@ -53,12 +52,19 @@ def build_fire_graph(nodes_df, max_distance_km=10):
                                 (current_attrs['center_latitude'], current_attrs['center_longitude'])).km
                 node_distances.append((prev_node, dist))
             
-            # sort by distance and select nearest 5
+            # sort by distance and select randomly 1~5 from the nearest nodes
             node_distances.sort(key=lambda x: x[1])
-            nearest_5_nodes = node_distances[:min(5, len(node_distances))]
+            available_nodes = min(5, len(node_distances))  # consider up to 5 nodes
+            num_connections = random.randint(1, available_nodes)  # randomly select 1~available_nodes
             
-            # connect to the nearest 5 nodes
-            for nearest_node, min_dist in nearest_5_nodes:
+            # randomly select from the nearest 5 nodes
+            nearest_candidates = node_distances[:available_nodes]
+            selected_nodes = random.sample(nearest_candidates, num_connections)
+            
+            print(f"[EDGE_DEBUG] No connections found for node {current_node}, connecting to {num_connections} random previous nodes")
+            
+            # connect to the selected nodes
+            for nearest_node, min_dist in selected_nodes:
                 elev_prev = G.nodes[nearest_node].get('avg_elevation', 0)
                 elev_curr = current_attrs.get('avg_elevation', 0)
                 elev_diff = elev_curr - elev_prev
@@ -66,6 +72,6 @@ def build_fire_graph(nodes_df, max_distance_km=10):
                 G.add_edge(nearest_node, current_node, weight=weight)
                 print(f"[EDGE_DEBUG] Connected node {current_node} to node {nearest_node} (distance: {min_dist:.2f}km)")
             
-            print(f"[EDGE_DEBUG] Total {len(nearest_5_nodes)} mandatory connections created for node {current_node}")
+            print(f"[EDGE_DEBUG] Total {num_connections} mandatory connections created for node {current_node}")
     
     return G
