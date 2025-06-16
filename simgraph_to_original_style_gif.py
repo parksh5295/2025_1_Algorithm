@@ -67,18 +67,23 @@ def main():
     from graph.build_graph import cluster_and_build_graph
     from graph.snapshot import draw_graph_snapshot
     from utiles.gen_gif import generate_gif_for_dataset
-    cum_df = pd.DataFrame(columns=df.columns)
+    cumulative_df = pd.DataFrame(columns=df.columns)
     filenumber_str = f"simsub_{args.data_number}"
+
+    # Ensure frame directory exists upfront
+    graph_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'graph')
+    frame_dir_path = os.path.join(graph_dir, 'frame', f"frame_{filenumber_str}")
+    os.makedirs(frame_dir_path, exist_ok=True)
+
     for i, (interval, interval_df) in enumerate(interval_groups):
         sequence_id = i + 1
-        cum_df = pd.concat([cum_df, interval_df], ignore_index=True)
-        _processed_df, nodes_df, G = cluster_and_build_graph(cum_df.copy())
+        cumulative_df = pd.concat([cumulative_df, interval_df], ignore_index=True)
+        _processed_df, nodes_df, G = cluster_and_build_graph(cumulative_df.copy())
         draw_graph_snapshot(G, filenumber_str, sequence_id)
         print(f"   Snapshot saved for sequence {sequence_id}")
 
     # 5. Create GIF
     print(f"Generating GIF for similar_sub_animation_{args.data_number}...")
-    graph_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'graph')
     generate_gif_for_dataset(
         filenumber=filenumber_str,
         frame_base_dir=graph_dir,
