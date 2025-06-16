@@ -29,6 +29,7 @@ folium = "*"
 pathlib = "*"
 scipy = "*"
 tqdm = "*"
+kaleido = "*"
 
 [dev-packages]
 

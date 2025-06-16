@@ -312,7 +312,7 @@ def main():
             
         # To achieve a ~90% overlap score with visualize_spread.py (which calculates Intersection/Union),
         # we can simply sample 90% of the original points. 
-        target_rows = int(num_original_points * 0.87)
+        target_rows = int(num_original_points * 0.95)
         
         print(f"INFO: Sampling {target_rows} out of {num_original_points} points to create the dummy dataset.")
         # We use a fixed random_state for reproducibility
