@@ -75,15 +75,16 @@ def get_prediction_paths(data_number):
     """
     # 'all_nodes' is the original dataset from load_data_path
     all_nodes_path = load_data_path(data_number)
-    
-    # We define a convention for initial and predicted files.
-    # They are stored in a subdirectory named after the data_number within 'prediction_data'.
-    prediction_dir = DATA_DIR.parent / 'prediction_data' / str(data_number)
-    prediction_dir.mkdir(parents=True, exist_ok=True)
-    
-    initial_path = prediction_dir / 'initial_fire.csv'
-    predicted_path = prediction_dir / 'predicted_spread.csv'
 
+    # The output and initial files will be in the same directory as the 'all_nodes' file.
+    output_dir = all_nodes_path.parent
+
+    # Define the path for the initial fire data, assuming it's in the same folder
+    initial_path = output_dir / 'initial_fire.csv'
+
+    # The predicted file is saved in the same directory with a "similar_" prefix.
+    predicted_path = output_dir / f"similar_{all_nodes_path.name}"
+    
     # Note: This function assumes that the 'initial_fire.csv' either exists or will be created.
     # A utility to create this initial file from the 'all_nodes' data might be needed.
     # For now, we just return the conventional path.

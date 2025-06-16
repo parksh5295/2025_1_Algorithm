@@ -23,6 +23,9 @@ requests = "*"
 scikit-learn = "*"
 geopy = "*"
 plotly = "*"
+python-dotenv = "*"
+numpy = "*"
+folium = "*"
 
 [dev-packages]
 
